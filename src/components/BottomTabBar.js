@@ -29,7 +29,7 @@ export default function BottomTabBar({ navigation, activeTab, onPlusPress }) {
   };
 
   return (
-    <View style={[styles.bottomTabBar, { paddingBottom: 10 + insets.bottom }]}> 
+    <View style={[styles.bottomTabBar, { height: 64 + insets.bottom, paddingBottom: 10 + insets.bottom }]}> 
       {renderTab('HomeScreen', 'Accueil', '🏠', () => navigation.replace('HomeScreen'))}
       {renderTab('FriendsScreen', 'Amis', '👥', () => navigation.navigate('FriendsScreen'))}
 
@@ -49,23 +49,20 @@ const styles = StyleSheet.create({
   bottomTabBar: {
     flexDirection: 'row',
     backgroundColor: 'rgba(10, 10, 12, 0.98)',
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     alignSelf: 'stretch',
     width: '100%',
-    zIndex: 9999,
+    zIndex: 1,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     paddingBottom: 10,
     paddingTop: 8,
+    height: 64,
     justifyContent: 'space-around',
     alignItems: 'center',
     boxShadow: '0px -4px 12px rgba(0, 0, 0, 0.3)',
-    elevation: 9999,
+    elevation: 10,
   },
   tabItem: {
     alignItems: 'center',

@@ -741,7 +741,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       ) : null}
 
-      <View style={styles.appHeader}>
+      <View style={[styles.appHeader, { paddingTop: 12 + insets.top }]}>
         <TouchableOpacity style={styles.headerMenuButton} onPress={openDrawer}>
           <Text style={styles.menuIcon}>☰</Text>
         </TouchableOpacity>
@@ -776,6 +776,7 @@ export default function HomeScreen({ navigation }) {
             keyExtractor={(item) => item.id}
             renderItem={renderPostItem}
             showsVerticalScrollIndicator={false}
+            style={styles.feedList}
             contentContainerStyle={[styles.scrollListPadding, { paddingBottom: 92 + insets.bottom }]}
             ListHeaderComponent={
               <View style={styles.headerExtension}>
@@ -1185,6 +1186,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  feedList: {
+    flex: 1,
   },
   scrollListPadding: {
     paddingBottom: 90,

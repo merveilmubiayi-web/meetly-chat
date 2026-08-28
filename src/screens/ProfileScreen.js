@@ -1,7 +1,5 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { signOut, updateProfile } from 'firebase/auth';
-import { collection, doc, getDocs, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -20,7 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
+import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = width / 3 - 2;
@@ -28,8 +27,9 @@ const COLUMN_WIDTH = width / 3 - 2;
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const userId = route.params?.userId || auth.currentUser?.uid;
-  const isOwnProfile = userId === auth.currentUser?.uid;
+  const [sessionUser, setSessionUser] = useState(null);
+  const userId = route.params?.userId || sessionUser?.id;
+  const isOwnProfile = userId === sessionUser?.id;
 
   const [userData, setUserData] = useState(null);
   const [userPosts, setUserPosts] = useState([]);
@@ -44,34 +44,43 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setSessionUser(data.user || null));
+  }, []);
+
+  useEffect(() => {
     if (!userId) return;
-
-    const userDocRef = doc(db, "users", userId);
-    const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) setUserData(docSnap.data());
-    });
-
-    // Requête filtrée pour exclure les stories du profil également si nécessaire
-    const postsRef = collection(db, "posts");
-    const q = query(postsRef, where("authorId", "==", userId), where("type", "in", ["text", "image"]));
-
-    const fetchPosts = async () => {
-      try {
-        const querySnapshot = await getDocs(q);
-        const postsList = [];
-        querySnapshot.forEach((doc) => {
-          postsList.push({ id: doc.id, ...doc.data() });
-        });
-        setUserPosts(postsList);
-      } catch (error) {
-        console.error("Erreur posts profil :", error);
-      } finally {
+    let active = true;
+    const loadProfile = async () => {
+      const [profileResult, postsResult] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        supabase.from('posts').select('*').eq('author_id', userId).in('type', ['text', 'image']).order('created_at', { ascending: false }),
+      ]);
+      if (!active) return;
+      if (profileResult.error || postsResult.error) {
+        console.error('Erreur profil Supabase :', profileResult.error?.message || postsResult.error?.message);
         setLoading(false);
+        return;
       }
+      const profile = profileResult.data;
+      setUserData(profile ? {
+        ...profile,
+        displayName: profile.name,
+        username: profile.username?.replace(/^@/, ''),
+        phoneNumber: profile.phone_number,
+        photoURL: profile.avatar_url,
+        coverUrl: profile.cover_url,
+      } : null);
+      setUserPosts((postsResult.data || []).map((post) => ({
+        ...post,
+        authorId: post.author_id,
+        mediaUrl: post.media_url,
+        likedBy: post.liked_by,
+        isPinned: post.is_pinned,
+      })));
+      setLoading(false);
     };
-
-    fetchPosts();
-    return () => unsubscribeUser();
+    loadProfile();
+    return () => { active = false; };
   }, [userId]);
 
   useEffect(() => {
@@ -86,13 +95,13 @@ export default function ProfileScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      await uploadToCloudinaryAndFirebase(result.assets[0].uri, 'photoURL');
+      await uploadToCloudinaryAndSupabase(result.assets[0].uri, 'photoURL');
     }
   };
 
@@ -104,67 +113,56 @@ export default function ProfileScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [16, 9],
       quality: 0.7,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      await uploadToCloudinaryAndFirebase(result.assets[0].uri, 'coverUrl');
+      await uploadToCloudinaryAndSupabase(result.assets[0].uri, 'coverUrl');
     }
   };
 
-  const uploadToCloudinaryAndFirebase = async (localUri, field) => {
+  const uploadToCloudinaryAndSupabase = async (localUri, field) => {
     setUploading(true);
     try {
-      const cloudName = 'dr69cqxz6';
-      const uploadPreset = 'MEETLY';
-      const data = new FormData();
-      
-      if (localUri.startsWith('blob:')) {
-        const responseBlob = await fetch(localUri);
-        const blob = await responseBlob.blob();
-        data.append('file', blob, `profile_${auth.currentUser.uid}.jpg`);
-      } else if (localUri.startsWith('data:')) {
-        data.append('file', localUri);
-      } else {
-        data.append('file', {
-          uri: localUri,
-          type: 'image/jpeg',
-          name: `profile_${auth.currentUser.uid}.jpg`,
-        });
-      }
-      data.append('upload_preset', uploadPreset);
-
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: data });
-      const jsonResponse = await response.json();
-      if (!response.ok) throw new Error(jsonResponse.error?.message || "Erreur Cloudinary");
-
-      const secureUrl = jsonResponse.secure_url;
+      const fileName = `${field === 'coverUrl' ? 'cover' : 'avatar'}_${sessionUser.id}_${Date.now()}.jpg`;
+      const secureUrl = await uploadToCloudinary(localUri, { resourceType: 'image', fileName });
+      if (!secureUrl) throw new Error('Cloudinary n’a pas retourné d’URL pour cette image.');
       const updateData = {};
       if (field === 'coverUrl') {
-        updateData.coverUrl = secureUrl;
+        updateData.cover_url = secureUrl;
       } else {
-        updateData.photoURL = secureUrl;
-        await updateProfile(auth.currentUser, { photoURL: secureUrl });
+        updateData.avatar_url = secureUrl;
+        await supabase.auth.updateUser({ data: { avatar_url: secureUrl } });
       }
 
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), updateData);
+      const { error } = await supabase.from('profiles').upsert({ id: sessionUser.id, ...updateData }, { onConflict: 'id' });
+      if (error) throw error;
+      setUserData((prev) => ({ ...prev, ...updateData, photoURL: updateData.avatar_url || prev?.photoURL, coverUrl: updateData.cover_url || prev?.coverUrl }));
       Alert.alert('Succès', field === 'coverUrl' ? 'Couverture mise à jour !' : 'Photo de profil mise à jour !');
     } catch (error) {
-      console.error(error);
-      Alert.alert("Erreur", "Le téléversement a échoué.");
+      console.error('Erreur téléversement profil:', error);
+      const msg = error?.message || '';
+      if (msg.includes('Cloudinary') || msg.includes('signature') || msg.includes('503')) {
+        Alert.alert('Erreur', 'Le service Cloudinary ou l’Edge Function Supabase n’est pas configuré.');
+      } else if (msg.includes('cover_url') || msg.includes('column')) {
+        Alert.alert('Base de données', 'La colonne cover_url manque dans Supabase. Exécute le schéma Supabase mis à jour.');
+      } else {
+        Alert.alert('Erreur', error.message || 'Le téléversement a échoué.');
+      }
     } finally {
       setUploading(false);
     }
   };
 
-  const handleLogout = () => signOut(auth).catch(console.error);
+  const handleLogout = () => supabase.auth.signOut().catch(console.error);
 
   const handleSaveBio = async () => {
     if (!isOwnProfile) return;
     try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), { bio: bioDraft });
+      const { error } = await supabase.from('profiles').upsert({ id: sessionUser.id, bio: bioDraft }, { onConflict: 'id' });
+      if (error) throw error;
       setUserData((prev) => ({ ...prev, bio: bioDraft }));
       setBioModalVisible(false);
       Alert.alert('Profil', 'Votre description a été mise à jour.');
@@ -176,7 +174,7 @@ export default function ProfileScreen() {
 
   const getFilteredPosts = () => {
     if (activeTab === 'liked') {
-      return userPosts.filter(post => post.likedBy?.includes(auth.currentUser?.uid));
+      return userPosts.filter(post => post.likedBy?.includes(sessionUser?.id));
     }
     if (activeTab === 'pinned') {
       return userPosts.filter(post => post.isPinned === true);
@@ -259,9 +257,9 @@ export default function ProfileScreen() {
             {/* 1. Zone Photo de couverture Panorama */}
             <View style={styles.coverWrapper}>
               <ImageBackground
-                source={{ uri: userData?.coverUrl || 'https://via.placeholder.com/900x300.png?text=Meetly+Cover' }}
+                source={userData?.coverUrl ? { uri: userData.coverUrl } : require('../../assets/images/Post.jpg')}
                 style={styles.coverBackground}
-                imageStyle={styles.coverImage}
+                resizeMode="cover"
               >
                 <View style={styles.coverOverlay} />
                 {isOwnProfile && (
@@ -390,7 +388,7 @@ const styles = StyleSheet.create({
   // Design de la structure Couverture + Avatar Superposé
   coverWrapper: { width: '100%', height: 180, position: 'relative', marginBottom: 55 },
   coverBackground: { width: '100%', height: '100%', overflow: 'hidden' },
-  coverImage: { resizeMode: 'cover' },
+  coverImage: {},
   coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
   changeCoverButton: { position: 'absolute', right: 12, top: 12, backgroundColor: 'rgba(0, 0, 0, 0.6)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 },
   changeCoverButtonText: { color: '#fff', fontSize: 11, fontWeight: '700' },
@@ -423,7 +421,7 @@ const styles = StyleSheet.create({
   modalContent: { width: '100%', maxWidth: 420, backgroundColor: '#0a0a0c', borderRadius: 24, overflow: 'hidden', alignItems: 'center', padding: 20 },
   modalCloseButton: { position: 'absolute', top: 16, right: 16, zIndex: 10, padding: 10 },
   modalCloseText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  avatarPreview: { width: '100%', height: 360, borderRadius: 20, resizeMode: 'contain', backgroundColor: '#141418' },
+  avatarPreview: { width: '100%', height: 360, borderRadius: 20, backgroundColor: '#141418' },
   bioModalContent: { width: '100%', maxWidth: 420, backgroundColor: '#0a0a0c', borderRadius: 24, overflow: 'hidden', padding: 20 },
   modalTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 12 },
   bioInput: { backgroundColor: '#141418', borderRadius: 14, padding: 16, color: '#fff', minHeight: 140, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 16 },
@@ -441,7 +439,7 @@ const styles = StyleSheet.create({
   activeTabIcon: { opacity: 1 },
 
   gridItem: { width: COLUMN_WIDTH, height: COLUMN_WIDTH, margin: 1, backgroundColor: '#141418' },
-  gridImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  gridImage: { width: '100%', height: '100%' },
   gridTextCard: { flex: 1, padding: 8, justifyContent: 'center', alignItems: 'center' },
   gridTextCardContent: { color: '#8a8a9a', fontSize: 11, textAlign: 'center' },
   profileSkeletonContainer: { flex: 1, backgroundColor: '#0a0a0c', paddingHorizontal: 16, paddingTop: 16 },

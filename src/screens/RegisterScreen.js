@@ -1,7 +1,7 @@
-import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { makeRedirectUri } from 'expo-auth-session';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 export default function RegisterScreen({ navigation }) {
@@ -14,43 +14,25 @@ export default function RegisterScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   WebBrowser.maybeCompleteAuthSession();
 
-  const googleExpoClientId = process.env.GOOGLE_EXPO_CLIENT_ID || '';
-  const googleAndroidClientId = process.env.GOOGLE_ANDROID_CLIENT_ID || '';
-  const googleIosClientId = process.env.GOOGLE_IOS_CLIENT_ID || '';
-  const googleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID || '';
-  const shouldEnableGoogle = googleWebClientId.length > 0 || googleExpoClientId.length > 0;
-
-  const [gRequest, gResponse, gPromptAsync] = Google.useAuthRequest({
-    expoClientId: googleExpoClientId,
-    androidClientId: googleAndroidClientId,
-    iosClientId: googleIosClientId,
-    webClientId: googleWebClientId,
-  });
-
-  useEffect(() => {
-    const handleGoogleResp = async () => {
-      if (gResponse?.type === 'success') {
-        try {
-          const idToken = gResponse.authentication?.idToken || gResponse.params?.id_token;
-          if (!idToken) throw new Error('No Google ID token');
-          setLoading(true);
-          const { error } = await supabase.auth.signInWithIdToken({
-            provider: 'google',
-            token: idToken,
-          });
-          if (error) throw error;
-          Alert.alert('Connecté', 'Connexion Google réussie.');
-          navigation.replace('HomeScreen');
-        } catch (e) {
-          console.error(e);
-          Alert.alert('Erreur', "Impossible de se connecter via Google.");
-        } finally {
-          setLoading(false);
-        }
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      const redirectTo = makeRedirectUri({ scheme: 'meetlyneuf' });
+      const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true } });
+      if (error) throw error;
+      if (!data?.url) throw new Error('URL Google manquante');
+      if (typeof window !== 'undefined') {
+        window.location.assign(data.url);
+        return;
       }
-    };
-    handleGoogleResp();
-  }, [gResponse]);
+      await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    } catch (error) {
+      console.error('Supabase Google login error', error);
+      Alert.alert('Connexion Google impossible', error.message || 'Configure Google dans Supabase Authentication > Providers.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleRegister = async () => {
     if (!name || !username || !email || !password || !confirmPassword) {
@@ -107,7 +89,10 @@ export default function RegisterScreen({ navigation }) {
       }
     } catch (error) {
       console.error('Supabase registration error', error);
-      Alert.alert('Échec', error.message || "Impossible de créer le compte.");
+      const message = error.status === 500 && error.message?.toLowerCase().includes('confirmation email')
+        ? "Le serveur d'e-mails Supabase n'est pas configuré. Désactive la confirmation e-mail dans Authentication > Providers > Email, ou configure un SMTP."
+        : error.message || "Impossible de créer le compte.";
+      Alert.alert('Échec de création', message);
     } finally {
       setLoading(false);
     }
@@ -127,7 +112,7 @@ export default function RegisterScreen({ navigation }) {
       <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Créer mon compte</Text>}
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={() => gPromptAsync()} disabled={!gRequest || loading}>
+      <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={handleGoogleLogin} disabled={loading}>
         <Text style={styles.googleButtonText}>Se connecter avec Google</Text>
       </TouchableOpacity>
     </View>

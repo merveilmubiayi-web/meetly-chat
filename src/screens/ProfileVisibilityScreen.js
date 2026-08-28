@@ -1,28 +1,32 @@
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function ProfileVisibilityScreen({ navigation }) {
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.currentUser?.uid) return;
-
-    const userRef = doc(db, 'users', auth.currentUser.uid);
-    const unsubscribe = onSnapshot(userRef, (snap) => {
-      setIsPublic(snap.data()?.isPublic ?? true);
+    let active = true;
+    const loadProfile = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) { setLoading(false); return; }
+      const { data, error } = await supabase.from('profiles').select('is_public').eq('id', userData.user.id).maybeSingle();
+      if (!active) return;
+      if (error) console.warn('Profile visibility load failed:', error.message);
+      setIsPublic(data?.is_public ?? true);
       setLoading(false);
-    });
-
-    return unsubscribe;
+    };
+    loadProfile();
+    return () => { active = false; };
   }, []);
 
   const handleToggle = async (value) => {
-    if (!auth.currentUser?.uid) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
     try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), { isPublic: value });
+      const { error } = await supabase.from('profiles').upsert({ id: userData.user.id, is_public: value }, { onConflict: 'id' });
+      if (error) throw error;
       setIsPublic(value);
     } catch (error) {
       Alert.alert('Erreur', 'Impossible de modifier la visibilité du profil.');

@@ -1,5 +1,3 @@
-import { EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword } from 'firebase/auth';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -14,7 +12,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function AccountSettingsScreen({ navigation, route }) {
   const routeSection = route.params?.section || 'email';
@@ -39,38 +37,47 @@ export default function AccountSettingsScreen({ navigation, route }) {
   }, [route.params?.section]);
 
   useEffect(() => {
-    if (!auth.currentUser?.uid) return;
-    const userRef = doc(db, 'users', auth.currentUser.uid);
-    const unsubscribe = onSnapshot(userRef, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      setUserData(data);
-      setEmail(data.email || auth.currentUser.email || '');
-      setRegion(data.region || '');
-      setAlgorithmPreferences(data.algorithmPreferences || {
+    let active = true;
+    const loadSettings = async () => {
+      const { data: userDataResult } = await supabase.auth.getUser();
+      const currentUser = userDataResult.user;
+      if (!currentUser) { setLoading(false); return; }
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+      if (!active) return;
+      if (error) console.warn('Account settings load failed:', error.message);
+      const profile = data || {};
+      setUserData(profile);
+      setEmail(currentUser.email || '');
+      setRegion(profile.region || '');
+      setAlgorithmPreferences(profile.algorithm_preferences || {
         boostFriends: true,
         showNewPostsFirst: true,
         reduceSponsored: false,
       });
-      setNotificationSettings(data.notificationSettings || {
+      setNotificationSettings(profile.notification_settings || {
         likes: true,
         comments: true,
         newFollowers: true,
         liveFriends: true,
       });
       setLoading(false);
-    });
-    return unsubscribe;
+    };
+    loadSettings();
+    return () => { active = false; };
   }, []);
 
-  const userRef = auth.currentUser ? doc(db, 'users', auth.currentUser.uid) : null;
+  const getCurrentUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) throw new Error('Utilisateur non connecté.');
+    return data.user;
+  };
 
   const reauthenticate = async (password) => {
-    if (!auth.currentUser?.email) {
-      throw new Error('Utilisateur non connecté.');
-    }
-    const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
-    await reauthenticateWithCredential(auth.currentUser, credential);
+    const currentUser = await getCurrentUser();
+    if (!currentUser.email) throw new Error('Utilisateur non connecté.');
+    const { error } = await supabase.auth.signInWithPassword({ email: currentUser.email, password });
+    if (error) throw error;
+    return currentUser;
   };
 
   const handleUpdateEmail = async () => {
@@ -78,7 +85,8 @@ export default function AccountSettingsScreen({ navigation, route }) {
       Alert.alert('Email requis', 'Saisis une adresse e-mail valide.');
       return;
     }
-    if (email.trim().toLowerCase() === auth.currentUser?.email) {
+    const currentUser = await getCurrentUser();
+    if (email.trim().toLowerCase() === currentUser.email) {
       Alert.alert('Aucune modification', 'L’adresse e-mail est déjà celle du compte.');
       return;
     }
@@ -90,10 +98,8 @@ export default function AccountSettingsScreen({ navigation, route }) {
     try {
       setSavingEmail(true);
       await reauthenticate(currentPassword);
-      await updateEmail(auth.currentUser, email.trim().toLowerCase());
-      if (userRef) {
-        await updateDoc(userRef, { email: email.trim().toLowerCase() });
-      }
+      const { error } = await supabase.auth.updateUser({ email: email.trim().toLowerCase() });
+      if (error) throw error;
       Alert.alert('Email mis à jour', 'Ton adresse e-mail a bien été modifiée.');
       setCurrentPassword('');
     } catch (error) {
@@ -121,7 +127,8 @@ export default function AccountSettingsScreen({ navigation, route }) {
     try {
       setSavingPassword(true);
       await reauthenticate(currentPassword);
-      await updatePassword(auth.currentUser, newPassword);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
       Alert.alert('Mot de passe mis à jour', 'Ton mot de passe a bien été modifié.');
       setCurrentPassword('');
       setNewPassword('');
@@ -135,10 +142,11 @@ export default function AccountSettingsScreen({ navigation, route }) {
   };
 
   const handleSaveRegion = async () => {
-    if (!userRef) return;
+    const currentUser = await getCurrentUser();
     try {
       setSavingRegion(true);
-      await updateDoc(userRef, { region: region.trim() });
+      const { error } = await supabase.from('profiles').upsert({ id: currentUser.id, region: region.trim() }, { onConflict: 'id' });
+      if (error) throw error;
       Alert.alert('Région sauvegardée', 'Ta région a bien été mise à jour.');
     } catch (error) {
       console.error('Erreur sauvegarde région :', error);
@@ -149,17 +157,17 @@ export default function AccountSettingsScreen({ navigation, route }) {
   };
 
   const toggleAlgorithmPreference = async (key) => {
-    if (!userRef) return;
+    const currentUser = await getCurrentUser();
     const nextPrefs = { ...algorithmPreferences, [key]: !algorithmPreferences[key] };
     setAlgorithmPreferences(nextPrefs);
-    await updateDoc(userRef, { algorithmPreferences: nextPrefs });
+    await supabase.from('profiles').upsert({ id: currentUser.id, algorithm_preferences: nextPrefs }, { onConflict: 'id' });
   };
 
   const toggleNotificationSetting = async (key) => {
-    if (!userRef) return;
+    const currentUser = await getCurrentUser();
     const nextSettings = { ...notificationSettings, [key]: !notificationSettings[key] };
     setNotificationSettings(nextSettings);
-    await updateDoc(userRef, { notificationSettings: nextSettings });
+    await supabase.from('profiles').upsert({ id: currentUser.id, notification_settings: nextSettings }, { onConflict: 'id' });
   };
 
   return (

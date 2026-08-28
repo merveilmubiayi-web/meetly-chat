@@ -18,5 +18,12 @@
     "**/*.tsx",
     "**/*.js",
     "**/*.jsx"
+  ],
+  "exclude": [
+    "supabase/functions/**",
+    "src/components/animated-icon.web.tsx",
+    "src/components/app-tabs.tsx",
+    "src/components/app-tabs.web.tsx",
+    "src/components/ui/collapsible.tsx"
   ]
 }

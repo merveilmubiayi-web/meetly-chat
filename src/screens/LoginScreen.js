@@ -1,50 +1,44 @@
 
-import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState('');
+  const initialEmail = navigation?.getState?.()?.routes?.find((route) => route.name === 'LoginScreen')?.params?.email || '';
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   WebBrowser.maybeCompleteAuthSession();
 
-  const webClientId = process.env.GOOGLE_WEB_CLIENT_ID || '';
-  const shouldEnableGoogle = webClientId.length > 0;
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    expoClientId: process.env.GOOGLE_EXPO_CLIENT_ID || '',
-    androidClientId: process.env.GOOGLE_ANDROID_CLIENT_ID || '',
-    iosClientId: process.env.GOOGLE_IOS_CLIENT_ID || '',
-    webClientId,
-  });
-
   useEffect(() => {
-    const handleGoogleResponse = async () => {
-      if (response?.type === 'success') {
-        try {
-          const idToken = response.authentication?.idToken || response.params?.id_token;
-          if (!idToken) throw new Error('No Google ID token');
-          setLoading(true);
-          const { error } = await supabase.auth.signInWithIdToken({
-            provider: 'google',
-            token: idToken,
-          });
-          if (error) throw error;
-          Alert.alert('Connecté', 'Connexion Google réussie.');
-          navigateTo('HomeScreen', 'replace');
-        } catch (e) {
-          console.error(e);
-          Alert.alert('Erreur', "Impossible de se connecter via Google.");
-        } finally {
-          setLoading(false);
-        }
+    const routeEmail = navigation?.getState?.()?.routes?.find((route) => route.name === 'LoginScreen')?.params?.email;
+    if (routeEmail) setEmail(routeEmail);
+  }, [navigation]);
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      const redirectTo = makeRedirectUri({ scheme: 'meetlyneuf' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (!data?.url) throw new Error('URL Google manquante');
+      if (typeof window !== 'undefined') {
+        window.location.assign(data.url);
+        return;
       }
-    };
-    handleGoogleResponse();
-  }, [response]);
+      await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    } catch (error) {
+      console.error('Supabase Google login error', error);
+      Alert.alert('Connexion Google impossible', error.message || 'Configure Google dans Supabase Authentication > Providers.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const navigateTo = (screen, action = 'navigate') => {
     if (action === 'replace') navigation.replace(screen);
@@ -114,15 +108,14 @@ export default function LoginScreen({ navigation }) {
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Se connecter</Text>}
       </TouchableOpacity>
 
-      {shouldEnableGoogle ? (
-        <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={() => promptAsync()} disabled={!request || loading}>
-          <Text style={styles.googleButtonText}>Se connecter avec Google</Text>
-        </TouchableOpacity>
-      ) : null}
+      <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={handleGoogleLogin} disabled={loading}>
+        <Text style={styles.googleButtonText}>Se connecter avec Google</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.linkContainer} onPress={() => navigateTo('Register')}>
         <Text style={styles.linkText}>Nouveau sur Meetly ? <Text style={styles.linkHighlight}>Crée ton compte</Text></Text>
       </TouchableOpacity>
+
     </View>
   );
 }
@@ -145,7 +138,6 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     marginBottom: 10,
-    resizeMode: 'contain',
   },
   logoText: {
     fontSize: 36,
@@ -177,10 +169,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
-    shadowColor: '#a613c4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    boxShadow: '0px 4px 5px rgba(166, 19, 196, 0.3)',
     elevation: 3,
   },
   buttonText: {
@@ -208,5 +197,62 @@ const styles = StyleSheet.create({
     color: '#111',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  recentAccounts: {
+    marginTop: 24,
+  },
+  recentTitle: {
+    color: '#8a8a9a',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  recentList: {
+    gap: 10,
+  },
+  accountItem: {
+    width: 118,
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#141418',
+  },
+  accountAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#252530',
+  },
+  accountName: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  accountEmail: {
+    color: '#8a8a9a',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  otherAccountButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  otherAccountText: {
+    color: '#a613c4',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  createAccountButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+    borderRadius: 10,
+    backgroundColor: '#a613c4',
+  },
+  createAccountText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

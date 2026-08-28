@@ -1,13 +1,38 @@
 import * as ImagePicker from 'expo-image-picker';
-import { addDoc, collection } from 'firebase/firestore';
 import { useState } from 'react';
 import { Alert, Image, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { requestLiveKitToken } from '../config/api';
+import { supabase } from '../lib/supabase';
+import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
-export default function StudioPostScreen({ navigation }) {
+export default function StudioPostScreen({ navigation, route }) {
   const [caption, setCaption] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [contentType, setContentType] = useState(route.params?.type || null);
+  const isStory = contentType === 'story';
+  const isVideo = contentType === 'video';
+
+  const selectType = async (type) => {
+    if (type === 'live') {
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
+      if (!user) {
+        Alert.alert('Connexion requise', 'Tu dois être connecté pour démarrer un live.');
+        return;
+      }
+      try {
+        const room = `home_live_${user.id}`;
+        const result = await requestLiveKitToken(room, user.id);
+        if (!result?.token) throw new Error('Token LiveKit manquant');
+        navigation.replace('LiveCallScreen', { room, mode: 'video', token: result.token });
+      } catch (error) {
+        Alert.alert('Live indisponible', error.message || 'Le service LiveKit n’est pas configuré.');
+      }
+      return;
+    }
+    setContentType(type);
+  };
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -17,7 +42,7 @@ export default function StudioPostScreen({ navigation }) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: isVideo ? ['videos'] : ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -29,82 +54,63 @@ export default function StudioPostScreen({ navigation }) {
   };
 
   const uploadImageToCloudinary = async (uri) => {
-    try {
-      const cloudName = 'dr69cqxz6'; 
-      const uploadPreset = 'MEETLY';
-
-      const data = new FormData();
-      
-      if (uri.startsWith('blob:')) {
-        const responseBlob = await fetch(uri);
-        const blob = await responseBlob.blob();
-        data.append('file', blob, `post_${Date.now()}.jpg`);
-      } else if (uri.startsWith('data:')) {
-        data.append('file', uri);
-      } else {
-        data.append('file', {
-          uri,
-          name: `post_${Date.now()}.jpg`,
-          type: 'image/jpeg',
-        });
-      }
-      
-      data.append('upload_preset', uploadPreset);
-
-      const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-      const response = await fetch(url, {
-        method: 'POST',
-        body: data,
-        headers: { Accept: 'application/json' },
-      });
-
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error?.message || 'Échec du téléversement');
-      return json.secure_url || json.url;
-    } catch (err) {
-      console.error('uploadImageToCloudinary error:', err);
-      throw err;
-    }
+    return uploadToCloudinary(uri, {
+      resourceType: isVideo ? 'video' : 'image',
+      fileName: `${isStory ? 'story' : isVideo ? 'video' : 'post'}_${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`,
+    });
   };
 
   const handlePublish = async () => {
-    if (!caption.trim()) {
-      Alert.alert('Contenu manquant', 'Ajoute un texte ou une légende avant de publier.');
+    if (!contentType || (!isStory && !caption.trim() && !selectedImage) || ((isStory || isVideo) && !selectedImage)) {
+      Alert.alert('Contenu manquant', 'Ajoute un texte ou une image/vidéo avant de publier.');
       return;
     }
 
-    if (!auth.currentUser) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
       Alert.alert('Connexion requise', 'Tu dois être connecté pour publier.');
       return;
     }
 
     try {
       setUploading(true);
+      const { data: profile } = await supabase.from('profiles').select('name, avatar_url').eq('id', user.id).maybeSingle();
+      
+      const authorName = profile?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'Meetly user';
+      const authorAvatar = profile?.avatar_url || user.user_metadata?.avatar_url || null;
+
       let mediaUrl = '';
-      let type = 'text';
+      let type = contentType === 'video' ? 'video' : 'text';
 
       if (selectedImage) {
         mediaUrl = await uploadImageToCloudinary(selectedImage);
-        type = 'image';
+        type = isVideo ? 'video' : 'image';
       }
 
-      await addDoc(collection(db, 'posts'), {
-        authorId: auth.currentUser.uid,
-        authorName: auth.currentUser.displayName || 'Meetly user',
-        authorAvatar: auth.currentUser.photoURL || 'https://via.placeholder.com/150',
-        caption: caption.trim(),
-        type,
-        mediaUrl,
-        likesCount: 0,
-        likedBy: [],
-        createdAt: new Date()
-      });
+      const payload = {
+        author_id: user.id,
+        author_name: authorName,
+        author_avatar: authorAvatar,
+        type: isStory ? (isVideo ? 'video' : 'image') : type,
+        media_url: mediaUrl,
+      };
 
-      Alert.alert('Publication publiée', 'Votre contenu a été ajouté au flux Meetly.');
+      const { error } = isStory
+        ? await supabase.from('stories').insert(payload)
+        : await supabase.from('posts').insert({ ...payload, caption: caption.trim() });
+      if (error) throw error;
+
+      Alert.alert(isStory ? 'Story publiée' : 'Publication publiée', 'Votre contenu a été ajouté avec succès.');
       navigation.goBack();
     } catch (error) {
-      console.error(error);
-      Alert.alert('Erreur', 'La publication n’a pas pu être envoyée.');
+      console.error('Erreur publication:', error);
+      const msg = error?.message || '';
+      if (msg.includes('Cloudinary') || msg.includes('signature') || msg.includes('503')) {
+        Alert.alert('Erreur d’envoi de média', 'Le service de stockage Cloudinary ou l’Edge Function Supabase n’est pas configuré.');
+      } else {
+        Alert.alert('Erreur', error.message || 'La publication n’a pas pu être envoyée.');
+      }
     } finally {
       setUploading(false);
     }
@@ -118,15 +124,24 @@ export default function StudioPostScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backIcon}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Créer une publication</Text>
+        <Text style={styles.headerTitle}>{isStory ? 'Créer une story' : contentType ? 'Créer une publication' : 'Nouveau contenu'}</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Légende</Text>
+      {!contentType ? (
+        <View style={styles.card}>
+          <Text style={styles.label}>Choisir le type</Text>
+          {[['image', '🖼️', 'Image'], ['text', '✍️', 'Texte'], ['video', '🎥', 'Vidéo'], ['story', '⭕', 'Story'], ['live', '🔴', 'Live']].map(([type, icon, label]) => (
+            <TouchableOpacity key={type} style={styles.optionButton} onPress={() => selectType(type)}>
+              <Text style={styles.createEmoji}>{icon}</Text><Text style={styles.optionText}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : <View style={styles.card}>
+        <Text style={styles.label}>{isStory ? 'Image de la story' : isVideo ? 'Vidéo' : 'Légende'}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Exprime ton moment..."
+          placeholder={isVideo ? 'Légende de la vidéo...' : 'Exprime ton moment...'}
           placeholderTextColor="#8a8a9a"
           value={caption}
           onChangeText={setCaption}
@@ -140,9 +155,9 @@ export default function StudioPostScreen({ navigation }) {
         {selectedImage ? <Image source={{ uri: selectedImage }} style={styles.previewImage} /> : null}
 
         <TouchableOpacity style={styles.publishButton} onPress={handlePublish} disabled={uploading}>
-          <Text style={styles.publishButtonText}>{uploading ? 'Publication...' : 'Publier'}</Text>
+          <Text style={styles.publishButtonText}>{uploading ? 'Publication...' : isStory ? 'Publier la story' : 'Publier'}</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
     </SafeAreaView>
   );
 }
@@ -161,4 +176,6 @@ const styles = StyleSheet.create({
   previewImage: { width: '100%', height: 180, borderRadius: 12, marginTop: 12 },
   publishButton: { marginTop: 16, backgroundColor: '#a613c4', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   publishButtonText: { color: '#fff', fontWeight: '700' },
+  optionButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0c', borderRadius: 12, padding: 16, marginTop: 10 },
+  optionText: { color: '#fff', fontWeight: '700', marginLeft: 12, fontSize: 16 },
 });

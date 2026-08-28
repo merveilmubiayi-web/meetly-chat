@@ -1,52 +1,47 @@
-import { arrayRemove, doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, Image, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function BlockedUsersScreen({ navigation }) {
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const userId = auth.currentUser?.uid;
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
-
-    const userRef = doc(db, 'users', userId);
-    const unsubscribe = onSnapshot(userRef, async (snap) => {
-      if (!snap.exists()) {
+    let active = true;
+    const loadBlocked = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) { setLoading(false); return; }
+      const { data, error } = await supabase.from('blocked_users').select('blocked_id').eq('blocker_id', userData.user.id);
+      if (!active) return;
+      if (error) console.warn('Blocked users load failed:', error.message);
+      const ids = (data || []).map((item) => item.blocked_id);
+      if (!ids.length) {
         setBlockedUsers([]);
         setLoading(false);
         return;
       }
-
-      const ids = snap.data().blockedUsers || [];
-      const profiles = [];
-
-      for (const blockedId of ids) {
-        const blockedDoc = await getDoc(doc(db, 'users', blockedId));
-        if (blockedDoc.exists()) {
-          profiles.push({ id: blockedId, ...blockedDoc.data() });
-        }
-      }
-
-      setBlockedUsers(profiles);
+      const { data: profiles, error: profilesError } = await supabase.from('profiles').select('*').in('id', ids);
+      if (profilesError) console.warn('Blocked profiles load failed:', profilesError.message);
+      setBlockedUsers((profiles || []).map((profile) => ({
+        ...profile,
+        id: profile.id,
+        displayName: profile.name,
+        photoURL: profile.avatar_url,
+      })));
       setLoading(false);
-    });
-
-    return unsubscribe;
+    };
+    loadBlocked();
+    const channel = supabase.channel('blocked-users').on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_users' }, loadBlocked).subscribe();
+    return () => { active = false; supabase.removeChannel(channel); };
   }, []);
 
   const handleUnblock = async (userId) => {
-    if (!auth.currentUser?.uid) return;
-
     try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        blockedUsers: arrayRemove(userId)
-      });
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { error } = await supabase.from('blocked_users').delete().eq('blocker_id', userData.user.id).eq('blocked_id', userId);
+      if (error) throw error;
       setBlockedUsers((prev) => prev.filter((user) => user.id !== userId));
       Alert.alert('Succès', 'Utilisateur débloqué.');
     } catch (error) {

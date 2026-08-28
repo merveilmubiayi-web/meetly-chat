@@ -1,7 +1,7 @@
 import { Audio } from 'expo-av';
 import { Room, RoomEvent } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { livekitConfig } from '../config/livekit';
 
 // LiveCallScreen: minimal in-call UI with permission, mute and hangup controls.
@@ -58,16 +58,13 @@ export default function LiveCallScreen({ navigation, route }) {
 
     setConnecting(true);
 
-    if (!providedToken || Platform.OS === 'web') {
-      // No token or web environment: simulate join state and show guidance.
+    if (!providedToken) {
       setTimeout(() => {
         setConnecting(false);
         setJoined(true);
         Alert.alert(
-          'Mode simulation',
-          providedToken
-            ? 'L’intégration LiveKit n’est pas supportée sur le web dans cette configuration.'
-            : 'Aucun token LiveKit fourni — mode démonstration activé.'
+          'Appel indisponible',
+          'Aucun token LiveKit fourni. Vérifie la configuration de la fonction livekit-token.'
         );
       }, 700);
       return;
@@ -167,11 +164,7 @@ export default function LiveCallScreen({ navigation, route }) {
           </View>
         )}
 
-        {providedToken ? (
-          <Text style={styles.hint}>Token fourni — intégration LiveKit possible ici.</Text>
-        ) : (
-          <Text style={styles.hint}>Aucun token : utilisez un backend pour générer des tokens LiveKit.</Text>
-        )}
+        <Text style={styles.hint}>{providedToken ? 'Connexion LiveKit sécurisée.' : 'Token LiveKit manquant.'}</Text>
       </View>
     </SafeAreaView>
   );

@@ -64,10 +64,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     justifyContent: 'space-around',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    boxShadow: '0px -4px 12px rgba(0, 0, 0, 0.3)',
     elevation: 9999,
   },
   tabItem: {
@@ -87,9 +84,7 @@ const styles = StyleSheet.create({
   },
   tabIconActive: {
     color: '#ffffff',
-    textShadowColor: 'rgba(255,255,255,0.35)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
+    textShadow: '0px 0px 6px rgba(255, 255, 255, 0.35)',
   },
   tabLabel: {
     color: 'rgba(255, 255, 255, 0.65)',
@@ -112,10 +107,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#a613c4',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#a613c4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    boxShadow: '0px 4px 6px rgba(166, 19, 196, 0.3)',
     elevation: 5,
   },
   plusIconText: {

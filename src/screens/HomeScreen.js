@@ -1,21 +1,5 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS, RecordingOptionsPresets } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
-import {
-    addDoc,
-    arrayRemove,
-    arrayUnion,
-    collection,
-    deleteDoc,
-    doc,
-    getDoc,
-    increment,
-    onSnapshot,
-    orderBy,
-    query,
-    setDoc,
-    updateDoc,
-    where
-} from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
     Alert,
@@ -40,12 +24,16 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import CustomDrawerContent from '../components/CustomDrawerContent';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { requestLiveKitToken } from '../config/api';
-import { cloudinaryConfig } from '../config/cloudinary';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
+import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
 const toDateValue = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
   if (typeof value?.toDate === 'function') return value.toDate();
   if (typeof value === 'number') return new Date(value);
   if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
@@ -63,6 +51,7 @@ const formatRelativeTime = (value) => {
   if (!createdAt) return 'À l’instant';
 
   const diffMs = Date.now() - createdAt.getTime();
+  if (diffMs < 0) return 'À l’instant';
   const diffMinutes = Math.floor(diffMs / 60000);
   if (diffMinutes < 1) return 'À l’instant';
   if (diffMinutes < 60) return `il y a ${diffMinutes} min`;
@@ -71,11 +60,23 @@ const formatRelativeTime = (value) => {
   if (diffHours < 24) return `il y a ${diffHours} h`;
 
   const diffDays = Math.floor(diffHours / 24);
-  return `il y a ${diffDays} j`;
+  if (diffDays < 7) return `il y a ${diffDays} j`;
+
+  return createdAt.toLocaleDateString();
 };
 
+const REACTIONS = [
+  { key: 'like', emoji: '👍', label: 'J’aime', color: '#3b82f6' },
+  { key: 'love', emoji: '❤️', label: 'J’adore', color: '#ef4444' },
+  { key: 'haha', emoji: '😂', label: 'Haha', color: '#f59e0b' },
+  { key: 'wow', emoji: '😮', label: 'Wouah', color: '#f59e0b' },
+  { key: 'sad', emoji: '😢', label: 'Triste', color: '#3b82f6' },
+  { key: 'angry', emoji: '😡', label: 'Grr', color: '#ef4444' },
+];
+
 export default function HomeScreen({ navigation }) {
-  const currentUserId = auth.currentUser?.uid || null;
+  const [supabaseUserId, setSupabaseUserId] = useState(null);
+  const currentUserId = supabaseUserId;
   const insets = useSafeAreaInsets();
 
   const [posts, setPosts] = useState([]);
@@ -83,6 +84,9 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [savedPostIds, setSavedPostIds] = useState([]);
+  const [userReactions, setUserReactions] = useState({});
+  const [activeReactionPostId, setActiveReactionPostId] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
   const [commentsByPost, setCommentsByPost] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,6 +111,10 @@ export default function HomeScreen({ navigation }) {
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const drawerAnim = useRef(new Animated.Value(-320)).current;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setSupabaseUserId(data.user?.id || null));
+  }, []);
 
   const handleSearchSubmit = () => {
     const trimmed = searchQuery.trim();
@@ -164,88 +172,84 @@ export default function HomeScreen({ navigation }) {
       commentsListenerRef.current();
       commentsListenerRef.current = null;
     }
-    const commentsRef = collection(db, 'posts', post.id, 'comments');
-    const q = query(commentsRef, orderBy('createdAt', 'asc'));
-    commentsListenerRef.current = onSnapshot(
-      q,
-      (snapshot) => {
-        const list = [];
-        snapshot.forEach((docSnap) => list.push({ id: docSnap.id, ...docSnap.data() }));
-        setModalComments(list);
-      },
-      (error) => {
-        console.warn('Commentaires realtime failed:', error?.message || error);
+    let active = true;
+    const loadComments = async () => {
+      const { data, error } = await supabase.from('comments').select('*').eq('post_id', post.id).order('created_at', { ascending: true });
+      if (!active) return;
+      if (error) {
+        console.warn('Commentaires Supabase failed:', error.message);
+        return;
       }
-    );
+      setModalComments((data || []).map((comment) => ({
+        ...comment,
+        authorId: comment.author_id,
+        text: comment.body,
+        mediaType: comment.media_type,
+        mediaUrl: comment.media_url,
+        createdAt: comment.created_at,
+      })));
+    };
+    loadComments();
+    const channel = supabase.channel(`comments-${post.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${post.id}` }, loadComments).subscribe();
+    commentsListenerRef.current = () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
   };
 
   const uploadMediaToCloudinary = async (uri, resourceType = 'auto', fileName = 'upload_audio') => {
-    try {
-      const { cloudName, uploadPreset } = cloudinaryConfig;
-      const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const data = new FormData();
-      data.append('file', blob, fileName);
-      data.append('upload_preset', uploadPreset);
-
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        body: data,
-      });
-
-      if (!uploadResponse.ok) {
-        const text = await uploadResponse.text();
-        throw new Error(text);
-      }
-
-      const json = await uploadResponse.json();
-      return json.secure_url || json.url;
-    } catch (error) {
-      console.error('Erreur téléversement Cloudinary:', error);
-      throw error;
-    }
+    return uploadToCloudinary(uri, { resourceType, fileName });
   };
 
-  const submitComment = async (postId, { text, mediaType = 'text', mediaUrl = '' }) => {
-    if (!auth.currentUser) {
+  const submitComment = async (postId, { text, mediaType = 'text', mediaUrl = '', replyToId = null, replyToName = null }) => {
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) {
       Alert.alert('Connexion requise', 'Tu dois être connecté pour commenter.');
       return null;
     }
 
-    const payload = {
-      authorId: auth.currentUser.uid,
-      authorName: auth.currentUser.displayName || 'Meetly user',
-      authorAvatar: auth.currentUser.photoURL || 'https://via.placeholder.com/150',
-      text: text?.trim() || '',
-      mediaType,
-      mediaUrl,
-      createdAt: new Date(),
+    const commentBody = replyToName ? `@${replyToName} ${text?.trim() || ''}` : text?.trim() || '';
+
+    const { data, error } = await supabase.from('comments').insert({
+      post_id: postId,
+      author_id: user.id,
+      body: commentBody,
+      media_type: mediaType,
+      media_url: mediaUrl || null,
+      reply_to_id: replyToId || null,
+    }).select().single();
+    if (error) throw error;
+
+    const formattedComment = {
+      ...data,
+      id: data.id,
+      authorId: data.author_id,
+      authorName: currentUserProfile?.displayName || user.email || 'Moi',
+      text: data.body,
+      mediaType: data.media_type,
+      mediaUrl: data.media_url,
+      createdAt: data.created_at,
+      replyToId: data.reply_to_id,
     };
 
-    const commentRef = await addDoc(collection(db, 'posts', postId, 'comments'), payload);
-    const newComment = { id: commentRef.id, ...payload };
+    setCommentsByPost((prev) => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), formattedComment],
+    }));
 
-    const postRef = doc(db, 'posts', postId);
-    const postSnap = await getDoc(postRef);
-    const existing = postSnap.exists() ? postSnap.data().latestComments || [] : [];
-    const updatedLatest = [newComment, ...existing].slice(0, 3);
-    await updateDoc(postRef, {
-      latestComments: updatedLatest,
-      commentsCount: increment(1),
-    });
+    setModalComments((prev) => [...prev, formattedComment]);
 
-    const postAuthorId = postSnap.exists() ? postSnap.data().authorId : null;
-    if (postAuthorId && postAuthorId !== auth.currentUser.uid) {
-      await addDoc(collection(db, 'notifications'), {
-        recipientId: postAuthorId,
-        title: 'Nouveau commentaire',
-        message: `${currentUserProfile?.displayName || 'Quelqu’un'} a commenté votre publication.`,
-        createdAt: new Date(),
-      });
-    }
+    setPosts((prevPosts) =>
+      prevPosts.map((p) =>
+        p.id === postId
+          ? { ...p, commentsCount: (p.commentsCount || 0) + 1 }
+          : p
+      )
+    );
 
-    return newComment;
+    setReplyingTo(null);
+    return formattedComment;
   };
 
   const handleAddComment = async (postId, text = null) => {
@@ -256,6 +260,8 @@ export default function HomeScreen({ navigation }) {
       await submitComment(postId, {
         text: commentText.trim(),
         mediaType: 'text',
+        replyToId: replyingTo?.commentId || null,
+        replyToName: replyingTo?.authorName || null,
       });
       if (text === null) {
         setCommentInputs((prev) => ({ ...prev, [postId]: '' }));
@@ -360,141 +366,125 @@ export default function HomeScreen({ navigation }) {
   // Écoute de l'utilisateur et de ses favoris locaux
   useEffect(() => {
     if (!currentUserId) return;
-
-    const savedQuery = query(
-      collection(db, 'saved_posts'),
-      where('userId', '==', currentUserId)
-    );
-
-    const unsubscribeSaved = onSnapshot(savedQuery, (snapshot) => {
-      const ids = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.postId) ids.push(data.postId);
-      });
-      setSavedPostIds(ids);
-    });
-
-    const userDocRef = doc(db, 'users', currentUserId);
-    const unsubscribeUser = onSnapshot(
-      userDocRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setCurrentUserProfile(data);
-        }
-      },
-      (error) => {
-        console.warn('User snapshot error, skipping realtime updates:', error?.message);
+    let active = true;
+    const loadUserData = async () => {
+      const [profileResult, savedResult, likesResult] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', currentUserId).maybeSingle(),
+        supabase.from('saved_posts').select('post_id').eq('user_id', currentUserId),
+        supabase.from('post_likes').select('post_id, reaction').eq('user_id', currentUserId),
+      ]);
+      if (!active) return;
+      if (profileResult.error || savedResult.error) {
+        console.warn('Supabase user data failed:', profileResult.error?.message || savedResult.error?.message);
+        return;
       }
-    );
+      const profile = profileResult.data;
+      setCurrentUserProfile(profile ? { ...profile, displayName: profile.name, photoURL: profile.avatar_url } : null);
+      setSavedPostIds((savedResult.data || []).map((item) => item.post_id));
 
+      const reactionMap = Object.fromEntries((likesResult.data || []).map((item) => [item.post_id, item.reaction || 'love']));
+      setUserReactions(reactionMap);
+    };
+    loadUserData();
+    const channel = supabase.channel(`user-data-${currentUserId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${currentUserId}` }, loadUserData).on('postgres_changes', { event: '*', schema: 'public', table: 'saved_posts', filter: `user_id=eq.${currentUserId}` }, loadUserData).subscribe();
     return () => {
-      unsubscribeUser();
-      unsubscribeSaved();
+      active = false;
+      supabase.removeChannel(channel);
     };
   }, [currentUserId]);
 
-  // Récupération des posts et des stories (Realtime only)
+  // Récupération des posts et des stories depuis Supabase
   useEffect(() => {
-    let unsubStories = null;
-    let unsubPosts = null;
-
-    try {
-      const storiesRef = collection(db, 'stories');
-      const storiesQ = query(storiesRef, orderBy('createdAt', 'desc'));
-      unsubStories = onSnapshot(
-        storiesQ,
-        (snapshot) => {
-          const list = [];
-          snapshot.forEach((d) => {
-            const data = d.data();
-            if (data && isStoryVisible(data.createdAt)) {
-              list.push({ id: d.id, ...data });
-            }
-          });
-          setStories(list);
-          setError(null);
-        },
-        (error) => {
-          console.warn('Stories realtime failed:', error?.message);
-          setError('Problème de connexion aux stories.');
-        }
-      );
-    } catch (err) {
-      console.warn('Stories listener setup failed:', err?.message);
-      setError('Impossible d\'écouter les stories.');
-    }
-
-    try {
-      const postsRef = collection(db, 'posts');
-      const postsQ = query(postsRef, orderBy('createdAt', 'desc'));
-      unsubPosts = onSnapshot(
-        postsQ,
-        (snapshot) => {
-          const postsList = [];
-          const commentsMap = {};
-          snapshot.forEach((d) => {
-            const data = d.data();
-            // Exclure explicitement les posts marqués comme stories
-            if (data && data.isStory) return;
-            // Inclure les types de post habituels dans le fil principal
-            if (data.type === 'text' || data.type === 'image' || data.type === 'video') postsList.push({ id: d.id, ...data });
-          });
-
-          // Use denormalized latestComments field on the post document if available.
-          postsList.forEach((p) => {
-            commentsMap[p.id] = Array.isArray(p.latestComments) ? p.latestComments.slice(0, 3) : [];
-          });
-
-          setCommentsByPost(commentsMap);
-          setPosts(postsList);
-          setLoading(false);
-          setError(null);
-        },
-        (error) => {
-          console.warn('Posts realtime failed:', error?.message);
-          setError('Problème de connexion aux posts.');
-        }
-      );
-    } catch (err) {
-      console.warn('Posts listener setup failed:', err?.message);
-      setError('Impossible d\'écouter les posts.');
-    }
-
+    let active = true;
+    const loadFeed = async () => {
+      const [storiesResult, postsResult] = await Promise.all([
+        supabase.from('stories').select('*').order('created_at', { ascending: false }),
+        supabase.from('posts').select('*').eq('is_story', false).order('created_at', { ascending: false }),
+      ]);
+      if (!active) return;
+      if (storiesResult.error || postsResult.error) {
+        console.warn('Supabase feed failed:', storiesResult.error?.message || postsResult.error?.message);
+        setError('Les tables Supabase posts/stories doivent être créées.');
+        setLoading(false);
+        return;
+      }
+      const mapPost = (item) => ({
+        ...item,
+        authorId: item.author_id,
+        authorName: item.author_name || 'Meetly User',
+        authorAvatar: item.author_avatar,
+        mediaUrl: item.media_url,
+        likesCount: item.likes_count || 0,
+        likedBy: Array.isArray(item.liked_by) ? item.liked_by : [],
+        commentsCount: item.comments_count || (Array.isArray(item.latest_comments) ? item.latest_comments.length : 0),
+        createdAt: item.created_at,
+        latestComments: Array.isArray(item.latest_comments) ? item.latest_comments : [],
+      });
+      const postsList = postsResult.data.map(mapPost).filter((item) => ['text', 'image', 'video'].includes(item.type));
+      const storiesList = storiesResult.data.map(mapPost).filter((item) => isStoryVisible(item.createdAt));
+      setStories(storiesList);
+      setPosts(postsList);
+      setCommentsByPost(Object.fromEntries(postsList.map((item) => [item.id, item.latestComments || []])));
+      setLoading(false);
+      setError(null);
+    };
+    loadFeed();
+    const channel = supabase.channel(`feed-${reloadKey}`).on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, loadFeed).subscribe();
     return () => {
-      if (unsubStories) unsubStories();
-      if (unsubPosts) unsubPosts();
+      active = false;
+      supabase.removeChannel(channel);
     };
   }, [reloadKey]);
 
-  // Gestion des Likes
-  const handleLike = async (post) => {
-    if (!currentUserId) return;
-    const postRef = doc(db, 'posts', post.id);
-    const hasLiked = post.likedBy && post.likedBy.includes(currentUserId);
+  // Sélection d'une réaction multiple (Facebook-like)
+  const handleSelectReaction = async (post, reactionKey = 'love') => {
+    if (!currentUserId) {
+      Alert.alert('Connexion requise', 'Connecte-toi pour réagir.');
+      return;
+    }
+    setActiveReactionPostId(null);
+    const prevReaction = userReactions[post.id];
+    const isRemoving = prevReaction === reactionKey;
+
+    const currentLikedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
+    const newLikedBy = isRemoving
+      ? currentLikedBy.filter((id) => id !== currentUserId)
+      : currentLikedBy.includes(currentUserId) ? currentLikedBy : [...currentLikedBy, currentUserId];
+    
+    const countDiff = isRemoving ? -1 : prevReaction ? 0 : 1;
+    const newLikesCount = Math.max(0, (post.likesCount || 0) + countDiff);
+
+    setUserReactions((prev) => ({
+      ...prev,
+      [post.id]: isRemoving ? null : reactionKey,
+    }));
+
+    setPosts((items) =>
+      items.map((item) =>
+        item.id !== post.id
+          ? item
+          : { ...item, likedBy: newLikedBy, likesCount: newLikesCount }
+      )
+    );
+
     try {
-      if (hasLiked) {
-        await updateDoc(postRef, {
-          likedBy: arrayRemove(currentUserId),
-          likesCount: Math.max(0, (post.likesCount || 1) - 1),
-        });
+      if (isRemoving) {
+        await supabase.from('post_likes').delete().eq('post_id', post.id).eq('user_id', currentUserId);
       } else {
-        await updateDoc(postRef, {
-          likedBy: arrayUnion(currentUserId),
-          likesCount: (post.likesCount || 0) + 1,
-        });
-        if (post.authorId && post.authorId !== currentUserId) {
-          await addDoc(collection(db, 'notifications'), {
-            recipientId: post.authorId,
-            title: 'Nouveau like',
-            message: `${currentUserProfile?.displayName || 'Quelqu’un'} a aimé votre publication.`,
-            createdAt: new Date(),
-          });
-        }
+        await supabase.from('post_likes').upsert({ post_id: post.id, user_id: currentUserId, reaction: reactionKey });
       }
-    } catch (error) {
-      console.log('Erreur like:', error);
+    } catch (err) {
+      console.warn('Erreur reaction:', err);
+    }
+  };
+
+  // Gestion des Likes basique (toggle)
+  const handleLike = async (post) => {
+    const prevReaction = userReactions[post.id];
+    if (prevReaction) {
+      await handleSelectReaction(post, prevReaction);
+    } else {
+      await handleSelectReaction(post, 'love');
     }
   };
 
@@ -505,23 +495,16 @@ export default function HomeScreen({ navigation }) {
       return;
     }
 
-    const saveRef = doc(db, 'saved_posts', `${currentUserId}_${post.id}`);
-
     try {
-      const docSnap = await getDoc(saveRef);
-
-      if (docSnap.exists()) {
-        await deleteDoc(saveRef);
+      const { data: saved, error: readError } = await supabase.from('saved_posts').select('post_id').eq('user_id', currentUserId).eq('post_id', post.id).maybeSingle();
+      if (readError) throw readError;
+      if (saved) {
+        const { error } = await supabase.from('saved_posts').delete().eq('user_id', currentUserId).eq('post_id', post.id);
+        if (error) throw error;
         Alert.alert('Favoris', 'Publication retirée de vos enregistrements.');
       } else {
-        await setDoc(saveRef, {
-          userId: currentUserId,
-          postId: post.id,
-          postAuthor: post.authorName || 'Meetly User',
-          postCaption: post.caption || '',
-          postMedia: post.mediaUrl || '',
-          savedAt: new Date()
-        });
+        const { error } = await supabase.from('saved_posts').insert({ user_id: currentUserId, post_id: post.id });
+        if (error) throw error;
         Alert.alert('Favoris', 'Publication enregistrée !');
       }
     } catch (error) {
@@ -558,6 +541,10 @@ export default function HomeScreen({ navigation }) {
   const renderPostItem = ({ item }) => {
     const isLiked = item.likedBy && item.likedBy.includes(currentUserId);
     const isSaved = savedPostIds.includes(item.id);
+    const userReactionKey = userReactions[item.id];
+    const userReactionObj = REACTIONS.find((r) => r.key === userReactionKey);
+    const reactionIcon = userReactionObj ? userReactionObj.emoji : isLiked ? '❤️' : '🤍';
+    const isReactionActive = Boolean(userReactionObj || isLiked);
     return (
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
@@ -602,15 +589,39 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </>
         ) : null}
+        {/* ─── BARRE FLOTTANTE DE RÉACTIONS (FACEBOOK-LIKE) ─── */}
+        {activeReactionPostId === item.id && (
+          <View style={styles.reactionPickerBar}>
+            {REACTIONS.map((r) => (
+              <TouchableOpacity
+                key={r.key}
+                style={styles.reactionPickerBtn}
+                onPress={() => handleSelectReaction(item, r.key)}
+              >
+                <Text style={styles.reactionPickerEmoji}>{r.emoji}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setActiveReactionPostId(null)} style={styles.reactionPickerClose}>
+              <Text style={styles.reactionPickerCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.postActions}>
           <View style={styles.leftActions}>
-            <TouchableOpacity style={styles.actionButton} onPress={() => handleLike(item)}>
-              <Text style={[styles.actionIcon, { color: isLiked ? '#ff3b30' : '#fff' }]}>{isLiked ? '❤️' : '🤍'}</Text>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleLike(item)}
+              onLongPress={() => setActiveReactionPostId(activeReactionPostId === item.id ? null : item.id)}
+            >
+              <Text style={[styles.actionIcon, { color: isReactionActive ? (userReactionObj?.color || '#ff3b30') : '#fff' }]}>
+                {reactionIcon}
+              </Text>
               <Text style={styles.actionText}>{item.likesCount || 0}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => openComments(item)}>
               <Text style={styles.actionIcon}>💬</Text>
-              <Text style={styles.actionText}>{(commentsByPost[item.id] || []).length}</Text>
+              <Text style={styles.actionText}>{item.commentsCount || (commentsByPost[item.id] || []).length || 0}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => handleShare(item)}>
               <Text style={styles.actionIcon}>↪️</Text>
@@ -656,18 +667,22 @@ export default function HomeScreen({ navigation }) {
   };
 
   const startLive = async () => {
-    if (!auth.currentUser) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
       Alert.alert('Connexion requise', 'Tu dois être connecté pour démarrer un live.');
       return;
     }
-    const roomName = `home_live_${auth.currentUser?.uid || 'guest'}`;
+    const roomName = `home_live_${user.id}`;
     try {
-      const tokenResp = await requestLiveKitToken(roomName, auth.currentUser.uid || 'guest');
+      const tokenResp = await requestLiveKitToken(roomName, user.id);
       const token = tokenResp?.token || tokenResp;
       if (!token) {
         Alert.alert('Impossible de démarrer', 'Le service Live n\'est pas configuré.');
         return;
       }
+      const { error: sessionError } = await supabase.from('call_sessions').insert({ room_name: roomName, initiated_by: user.id, call_type: 'live', status: 'started' });
+      if (sessionError) throw sessionError;
       navigation.navigate('LiveCallScreen', { room: roomName, mode: 'audio', token });
     } catch (err) {
       console.error('startLive failed', err);
@@ -847,7 +862,7 @@ export default function HomeScreen({ navigation }) {
                     data={modalComments}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => (
-                      <View style={styles.commentModalItem}>
+                      <View style={[styles.commentModalItem, item.replyToId && styles.commentReplyItem]}>
                         <Text style={styles.commentModalAuthor}>{item.authorName || 'Anonyme'}</Text>
                         {item.mediaType === 'audio' ? (
                           <TouchableOpacity onPress={() => togglePlayComment(item)}>
@@ -856,12 +871,26 @@ export default function HomeScreen({ navigation }) {
                         ) : (
                           <Text style={styles.commentModalText}>{item.text}</Text>
                         )}
+                        <TouchableOpacity
+                          style={styles.replyCommentButton}
+                          onPress={() => setReplyingTo({ commentId: item.id, authorName: item.authorName || 'utilisateur' })}
+                        >
+                          <Text style={styles.replyCommentText}>Répondre</Text>
+                        </TouchableOpacity>
                       </View>
                     )}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.commentModalList}
                   />
                 )}
+                {replyingTo ? (
+                  <View style={styles.replyingBanner}>
+                    <Text style={styles.replyingBannerText}>Réponse à @{replyingTo.authorName}</Text>
+                    <TouchableOpacity onPress={() => setReplyingTo(null)}>
+                      <Text style={styles.replyingBannerClose}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 <View style={styles.commentModalInputRow}>
                   <TouchableOpacity
                     style={[styles.voiceButton, modalRecording ? styles.voiceButtonRecording : null]}
@@ -1197,10 +1226,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     justifyContent: 'space-around',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    boxShadow: '0px -4px 8px rgba(0, 0, 0, 0.2)',
     elevation: 10,
   },
   tabItem: {
@@ -1236,10 +1262,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#a613c4',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#a613c4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    boxShadow: '0px 4px 6px rgba(166, 19, 196, 0.3)',
     elevation: 5,
   },
   plusIconText: {
@@ -1339,6 +1362,37 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.07)',
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  commentReplyItem: {
+    marginLeft: 20,
+    borderLeftWidth: 2,
+    borderLeftColor: '#a613c4',
+  },
+  replyCommentButton: {
+    alignSelf: 'flex-start',
+    marginTop: 7,
+  },
+  replyCommentText: {
+    color: '#c56be0',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  replyingBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#20202a',
+  },
+  replyingBannerText: {
+    color: '#c56be0',
+    fontSize: 12,
+  },
+  replyingBannerClose: {
+    color: '#fff',
   },
   commentModalAuthor: {
     color: '#fff',

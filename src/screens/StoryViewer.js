@@ -1,8 +1,7 @@
 import { Video } from 'expo-av';
-import { addDoc, collection, getDocs, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Image, PanResponder, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 const DEFAULT_ADVANCE_MS = 5000;
@@ -47,13 +46,15 @@ export default function StoryViewer({ navigation, route }) {
       setReactions((prev) => prev.filter((x) => x.id !== id));
     });
 
-    // persist reaction in Firestore (lightweight)
     try {
-      await addDoc(collection(db, 'stories', story.id, 'reactions'), {
-        userId: auth.currentUser?.uid || null,
-        createdAt: new Date(),
-        type: 'heart'
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { error } = await supabase.from('story_reactions').upsert({
+        story_id: story.id,
+        user_id: userData.user.id,
+        reaction: 'heart',
       });
+      if (error) throw error;
     } catch (e) {
       console.warn('Failed to persist reaction', e);
     }
@@ -62,11 +63,16 @@ export default function StoryViewer({ navigation, route }) {
   useEffect(() => {
     const fetchStories = async () => {
       try {
-        const ref = collection(db, 'stories');
-        const q = query(ref, orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        const list = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        const { data, error } = await supabase.from('stories').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        const list = (data || []).map((story) => ({
+          ...story,
+          authorId: story.author_id,
+          authorName: story.author_name,
+          authorAvatar: story.author_avatar,
+          mediaUrl: story.media_url,
+          createdAt: story.created_at,
+        }));
         setStories(list);
         if (startIndex < list.length) setIndex(startIndex);
       } catch (e) {
@@ -81,12 +87,26 @@ export default function StoryViewer({ navigation, route }) {
     stopCommentsListener();
     const s = stories[index];
     if (s) {
-      const commentsRef = collection(db, 'stories', s.id, 'comments');
-      commentsListenerRef.current = onSnapshot(commentsRef, (snap) => {
-        const list = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-        setComments(list);
-      }, (err) => console.warn('comments listener error', err));
+      let active = true;
+      const loadComments = async () => {
+        const { data, error } = await supabase.from('story_comments').select('*').eq('story_id', s.id).order('created_at', { ascending: true });
+        if (!active) return;
+        if (error) {
+          console.warn('Story comments listener error', error.message);
+          return;
+        }
+        setComments((data || []).map((comment) => ({
+          ...comment,
+          authorName: comment.author_id,
+          text: comment.body,
+        })));
+      };
+      loadComments();
+      const channel = supabase.channel(`story-comments-${s.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'story_comments', filter: `story_id=eq.${s.id}` }, loadComments).subscribe();
+      commentsListenerRef.current = () => {
+        active = false;
+        supabase.removeChannel(channel);
+      };
     }
 
     // start/stop progress
@@ -216,14 +236,14 @@ export default function StoryViewer({ navigation, route }) {
         )}
 
         {/* Comments overlay: show latest comments as scrolling list */}
-        <View style={styles.commentsOverlay} pointerEvents="none">
+        <View style={[styles.commentsOverlay, { pointerEvents: 'none' }]}>
           {comments.slice(-5).map((c, i) => (
             <Animated.Text key={c.id} style={[styles.commentOverlayText, { bottom: 20 + i * 22 }]}>{c.authorName}: {c.text}</Animated.Text>
           ))}
         </View>
 
         {/* Reactions floating */}
-        <View style={styles.reactionsContainer} pointerEvents="box-none">
+        <View style={[styles.reactionsContainer, { pointerEvents: 'box-none' }]}>
           {reactions.map((r) => (
               <Animated.View key={r.id} style={[styles.reaction, { left: r.left, opacity: r.opacity, transform: [{ translateY: r.animY }, { translateX: r.animX }] }]}> 
                 <Text style={{ fontSize: 22 }}>❤️</Text>
@@ -232,7 +252,7 @@ export default function StoryViewer({ navigation, route }) {
         </View>
       </Animated.View>
 
-      <View style={styles.controls} pointerEvents="box-none">
+      <View style={[styles.controls, { pointerEvents: 'box-none' }]}>
         <TouchableOpacity style={styles.leftZone} onPress={goPrev} />
         <TouchableOpacity style={styles.centerZone} onPress={() => { setPaused((p) => !p); if (paused) startProgress(); else stopProgress(); }} />
         <TouchableOpacity style={styles.rightZone} onPress={goNext} />

@@ -1,38 +1,32 @@
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function SavedPostsScreen({ navigation }) {
   const [savedPosts, setSavedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.currentUser?.uid) {
+    let active = true;
+    const loadSavedPosts = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) { setLoading(false); return; }
+      const { data, error } = await supabase.from('saved_posts').select('post_id, posts(*)').eq('user_id', userData.user.id);
+      if (!active) return;
+      if (error) console.error('Erreur favoris Supabase :', error.message);
+      setSavedPosts((data || []).map((item) => ({
+        ...item.posts,
+        id: item.post_id,
+        postAuthor: item.posts?.author_name,
+        postCaption: item.posts?.caption,
+        postMedia: item.posts?.media_url,
+      })));
       setLoading(false);
-      return;
-    }
-
-    // On écoute la collection globale 'saved_posts' là où l'userId correspond à l'utilisateur connecté
-    const savedQuery = query(
-      collection(db, 'saved_posts'),
-      where('userId', '==', auth.currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(savedQuery, (snapshot) => {
-      const posts = [];
-      snapshot.forEach((docSnap) => {
-        posts.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setSavedPosts(posts);
-      setLoading(false);
-    }, (error) => {
-      console.error("Erreur lors de la récupération des favoris :", error);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    };
+    loadSavedPosts();
+    const channel = supabase.channel('saved-posts-feed').on('postgres_changes', { event: '*', schema: 'public', table: 'saved_posts' }, loadSavedPosts).subscribe();
+    return () => { active = false; supabase.removeChannel(channel); };
   }, []);
 
   return (

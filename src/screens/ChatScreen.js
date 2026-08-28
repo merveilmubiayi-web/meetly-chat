@@ -1,19 +1,10 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS, RecordingOptionsPresets, Video } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
-import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    onSnapshot,
-    orderBy,
-    query,
-    updateDoc
-} from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
     Alert,
     FlatList,
+    Image,
     KeyboardAvoidingView,
     Platform,
     SafeAreaView,
@@ -25,9 +16,16 @@ import {
     View
 } from 'react-native';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { cloudinaryConfig } from '../config/cloudinary';
-import { auth, db } from '../config/firebase';
 import { requestLiveKitToken } from '../config/api';
+import { supabase } from '../lib/supabase';
+import { uploadToCloudinary } from '../utils/cloudinaryUpload';
+
+const formatMessageTime = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
 
 export default function ChatScreen({ navigation, route }) {
   const { chatId, recipientId } = route.params || {};
@@ -41,58 +39,118 @@ export default function ChatScreen({ navigation, route }) {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [waveformHeights, setWaveformHeights] = useState([8, 12, 6, 14, 10, 16]);
   const [recordDuration, setRecordDuration] = useState(0);
-  const currentUser = auth.currentUser;
+  const [currentUser, setCurrentUser] = useState(null);
+  const [recipientProfile, setRecipientProfile] = useState(null);
+  const [isRecipientTyping, setIsRecipientTyping] = useState(false);
+  const [isRecipientOnline, setIsRecipientOnline] = useState(false);
   const flatListRef = useRef();
   const reconnectTimeout = useRef(null);
   const waveformInterval = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const broadcastChannelRef = useRef(null);
 
   useEffect(() => {
-    let unsubscribe = null;
+    supabase.auth.getUser().then(({ data }) => setCurrentUser(data.user || null));
+  }, []);
 
-    const setupListener = () => {
-      if (!chatId) return;
+  useEffect(() => {
+    if (!recipientId) return;
+    supabase.from('profiles').select('*').eq('id', recipientId).maybeSingle().then(({ data }) => {
+      if (data) setRecipientProfile(data);
+    });
+  }, [recipientId]);
 
-      const messagesRef = collection(db, 'chats', chatId, 'messages');
-      const q = query(messagesRef, orderBy('timestamp', 'asc'));
-
-      unsubscribe = onSnapshot(q, (snapshot) => {
-        const messagesList = [];
-        snapshot.forEach((doc) => {
-          messagesList.push({ id: doc.id, ...doc.data() });
-        });
-        setMessages(messagesList);
-        setLoading(false);
-        setIsReconnecting(false);
-        if (reconnectTimeout.current) {
-          clearTimeout(reconnectTimeout.current);
-          reconnectTimeout.current = null;
+  useEffect(() => {
+    if (!chatId || !currentUser) return;
+    const channel = supabase.channel(`chat-events-${chatId}`)
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        if (payload?.payload?.userId !== currentUser.id) {
+          setIsRecipientTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => {
+            setIsRecipientTyping(false);
+          }, 3000);
         }
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const onlineUsers = Object.values(state).flat().map((p) => p.userId);
+        setIsRecipientOnline(onlineUsers.includes(recipientId));
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ userId: currentUser.id, onlineAt: new Date().toISOString() });
+        }
+      });
 
-        setTimeout(() => {
-          if (flatListRef.current && messagesList.length > 0) {
-            flatListRef.current.scrollToEnd({ animated: true });
-          }
-        }, 100);
-      }, (error) => {
+    broadcastChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [chatId, currentUser, recipientId]);
+
+  useEffect(() => {
+    if (!chatId) return undefined;
+    let active = true;
+    const loadMessages = async () => {
+      const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', chatId).is('deleted_at', null).order('created_at', { ascending: true });
+      if (error) {
         console.error('Erreur flux messages :', error);
         setLoading(false);
         setIsReconnecting(true);
-        if (!reconnectTimeout.current) {
-          reconnectTimeout.current = setTimeout(() => {
-            reconnectTimeout.current = null;
-            setupListener();
-          }, 5000);
+        return;
+      }
+      if (!active) return;
+      const messagesList = (data || []).map((message) => ({
+        ...message,
+        senderId: message.sender_id,
+        mediaType: message.media_type,
+        mediaUrl: message.media_url,
+        timestamp: message.created_at,
+        text: message.body,
+        readAt: message.read_at,
+      }));
+      setMessages(messagesList);
+      setLoading(false);
+      setIsReconnecting(false);
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+
+      setTimeout(() => {
+        if (flatListRef.current && messagesList.length > 0) {
+          flatListRef.current.scrollToEnd({ animated: true });
         }
+      }, 100);
+
+      // Mark unread messages sent by others as read
+      const currentId = currentUser?.id;
+      if (currentId) {
+        supabase.from('messages')
+          .update({ read_at: new Date().toISOString() })
+          .eq('conversation_id', chatId)
+          .neq('sender_id', currentId)
+          .is('read_at', null)
+          .then(() => {});
+      }
+    };
+    loadMessages();
+    const channel = supabase.channel(`messages-${chatId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${chatId}` }, loadMessages).subscribe();
+    return () => { active = false; supabase.removeChannel(channel); if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current); };
+  }, [chatId, currentUser]);
+
+  const handleInputChange = (text) => {
+    setInputText(text);
+    if (broadcastChannelRef.current && currentUser) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { userId: currentUser.id },
       });
-    };
-
-    setupListener();
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-      if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
-    };
-  }, [chatId]);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !currentUser) return;
@@ -101,32 +159,8 @@ export default function ChatScreen({ navigation, route }) {
     setInputText(''); 
 
     try {
-      const messagesRef = collection(db, "chats", chatId, "messages");
-      await addDoc(messagesRef, {
-        senderId: currentUser.uid,
-        text: messageText,
-        mediaType: 'text',
-        timestamp: new Date()
-      });
-
-      const chatDocRef = doc(db, "chats", chatId);
-      await updateDoc(chatDocRef, {
-        lastMessage: messageText,
-        lastMessageSender: currentUser.uid,
-        updatedAt: new Date()
-      });
-
-      if (recipientId && recipientId !== currentUser.uid) {
-        const recipientDoc = await getDoc(doc(db, 'users', recipientId));
-        recipientDoc.data();
-
-        await addDoc(collection(db, 'notifications'), {
-          recipientId,
-          title: 'Nouveau message',
-          message: `${currentUser.displayName || 'Quelqu’un'} vous a envoyé un message.`,
-          createdAt: new Date()
-        });
-      }
+      const { error } = await supabase.from('messages').insert({ conversation_id: chatId, sender_id: currentUser.id, body: messageText, media_type: 'text' });
+      if (error) throw error;
 
     } catch (error) {
       console.error("Erreur lors de l'envoi :", error);
@@ -182,27 +216,7 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   const uploadMediaToCloudinary = async (uri, resourceType = 'auto', fileName = 'upload') => {
-    const { cloudName, uploadPreset } = cloudinaryConfig;
-    const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
-
-    const response = await fetch(uri);
-    const fileBlob = await response.blob();
-    const formData = new FormData();
-    formData.append('file', fileBlob, `${fileName}`);
-    formData.append('upload_preset', uploadPreset);
-
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Cloudinary upload failed: ${errorText}`);
-    }
-
-    const uploadResult = await uploadResponse.json();
-    return uploadResult.secure_url || uploadResult.url;
+    return uploadToCloudinary(uri, { resourceType, fileName });
   };
 
   const stopAudioPlayback = async () => {
@@ -251,7 +265,7 @@ export default function ChatScreen({ navigation, route }) {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'],
         allowsEditing: false,
         quality: 0.7,
       });
@@ -261,21 +275,8 @@ export default function ChatScreen({ navigation, route }) {
       if (!asset.uri) return;
 
       const mediaUrl = await uploadMediaToCloudinary(asset.uri, 'video', `chat_${chatId}_${currentUser.uid}_${Date.now()}.mp4`);
-      const messagesRef = collection(db, "chats", chatId, "messages");
-      await addDoc(messagesRef, {
-        senderId: currentUser.uid,
-        mediaType: 'video',
-        mediaUrl,
-        duration: asset.duration || null,
-        timestamp: new Date()
-      });
-
-      const chatDocRef = doc(db, "chats", chatId);
-      await updateDoc(chatDocRef, {
-        lastMessage: 'Vidéo',
-        lastMessageSender: currentUser.uid,
-        updatedAt: new Date()
-      });
+      const { error } = await supabase.from('messages').insert({ conversation_id: chatId, sender_id: currentUser.id, media_type: 'video', media_url: mediaUrl, body: 'Vidéo' });
+      if (error) throw error;
     } catch (error) {
       console.error('Erreur upload vidéo :', error);
       Alert.alert('Erreur vidéo', 'Impossible de télécharger la vidéo.');
@@ -298,21 +299,8 @@ export default function ChatScreen({ navigation, route }) {
       }
 
       const mediaUrl = await uploadMediaToCloudinary(uri, 'auto');
-      const messagesRef = collection(db, 'chats', chatId, 'messages');
-      await addDoc(messagesRef, {
-        senderId: currentUser.uid,
-        mediaType: 'audio',
-        mediaUrl,
-        duration: durationMillis,
-        timestamp: new Date()
-      });
-
-      const chatDocRef = doc(db, "chats", chatId);
-      await updateDoc(chatDocRef, {
-        lastMessage: 'Note vocale',
-        lastMessageSender: currentUser.uid,
-        updatedAt: new Date()
-      });
+      const { error } = await supabase.from('messages').insert({ conversation_id: chatId, sender_id: currentUser.id, media_type: 'audio', media_url: mediaUrl, body: 'Note vocale' });
+      if (error) throw error;
     } catch (error) {
       console.error('Erreur arrêt enregistrement :', error);
       Alert.alert('Erreur audio', 'Impossible d’envoyer la note vocale.');
@@ -321,8 +309,9 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   const renderMessageItem = ({ item }) => {
-    const isMe = item.senderId === currentUser?.uid;
+    const isMe = item.senderId === currentUser?.id || item.senderId === currentUser?.uid;
     const mediaType = item.mediaType || 'text';
+    const isRead = Boolean(item.readAt);
 
     return (
       <View style={[styles.messageRow, isMe ? styles.myRow : styles.theirRow]}>
@@ -345,6 +334,17 @@ export default function ChatScreen({ navigation, route }) {
           ) : (
             <Text style={styles.messageText}>{item.text || 'Message'}</Text>
           )}
+
+          <View style={[styles.metaRow, isMe ? styles.myMetaRow : styles.theirMetaRow]}>
+            <Text style={[styles.timeText, isMe ? styles.myTimeText : styles.theirTimeText]}>
+              {formatMessageTime(item.timestamp)}
+            </Text>
+            {isMe && (
+              <Text style={[styles.tickIcon, isRead ? styles.tickRead : styles.tickSent]}>
+                {isRead ? '✓✓' : '✓'}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -364,7 +364,8 @@ export default function ChatScreen({ navigation, route }) {
   const initiateCall = async (mode /* 'audio' | 'video' */) => {
     try {
       const roomName = `chat_${chatId}`;
-      const token = await fetchLiveKitToken(roomName, currentUser?.uid || 'guest');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = await fetchLiveKitToken(roomName, sessionData.session?.user?.id);
       if (!token) {
         Alert.alert('Impossible de démarrer l\'appel', 'Le service d\'appel n\'est pas encore configuré.');
         return;
@@ -384,16 +385,27 @@ export default function ChatScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backIcon}>◁</Text>
         </TouchableOpacity>
+        
+        <Image
+          source={{ uri: recipientProfile?.avatar_url || 'https://via.placeholder.com/150' }}
+          style={styles.headerAvatar}
+        />
+
         <View style={styles.headerInfo}>
-          <Text style={styles.recipientName}>Membre #{recipientId?.substring(0, 5)}</Text>
-          <Text style={styles.statusText}>En ligne</Text>
+          <Text style={styles.recipientName} numberOfLines={1}>
+            {recipientProfile?.name || (recipientProfile?.username ? `@${recipientProfile.username}` : `Membre #${recipientId?.substring(0, 5) || 'user'}`)}
+          </Text>
+          <Text style={[styles.statusText, (isRecipientOnline || isRecipientTyping) && styles.statusOnline]}>
+            {isRecipientTyping ? '✍️ En train d’écrire...' : isRecipientOnline ? '🟢 En ligne' : 'Vu récemment'}
+          </Text>
         </View>
+
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity style={{ padding: 8 }} onPress={() => initiateCall('audio')}>
-            <Text style={{ color: '#fff' }}>📞</Text>
+          <TouchableOpacity style={styles.callHeaderBtn} onPress={() => initiateCall('audio')}>
+            <Text style={styles.callHeaderIcon}>📞</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={{ padding: 8 }} onPress={() => initiateCall('video')}>
-            <Text style={{ color: '#fff' }}>📹</Text>
+          <TouchableOpacity style={styles.callHeaderBtn} onPress={() => initiateCall('video')}>
+            <Text style={styles.callHeaderIcon}>📹</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -431,11 +443,10 @@ export default function ChatScreen({ navigation, route }) {
             placeholder="Message..."
             placeholderTextColor="#8a8a9a"
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={handleInputChange}
             multiline
           />
 
-          {/* 💡 Changement d'icône dynamique : Avion (✈️) lorsque texte saisi, microphone (🎙️) sinon */}
           {inputText.trim().length > 0 ? (
             <TouchableOpacity style={[styles.actionButton, styles.sendButtonActive]} onPress={handleSendMessage}>
               <Text style={styles.actionButtonIcon}>✈️</Text>
@@ -462,9 +473,13 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)' },
   backButton: { padding: 6 },
   backIcon: { fontSize: 20, color: '#fff' },
-  headerInfo: { flex: 1, marginLeft: 16 },
+  headerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#141418', marginLeft: 8 },
+  headerInfo: { flex: 1, marginLeft: 12 },
   recipientName: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  statusText: { color: '#a613c4', fontSize: 11, fontWeight: '600', marginTop: 1 },
+  statusText: { color: '#8a8a9a', fontSize: 12, fontWeight: '500', marginTop: 1 },
+  statusOnline: { color: '#34d399', fontWeight: '600' },
+  callHeaderBtn: { padding: 8, marginLeft: 4 },
+  callHeaderIcon: { color: '#fff', fontSize: 18 },
   centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   skeletonHeaderSmall: { width: '50%', height: 18, borderRadius: 10, backgroundColor: '#141418', marginBottom: 12 },
   skeletonHeaderLarge: { width: '90%', height: 100, borderRadius: 18, backgroundColor: '#141418', marginBottom: 16 },
@@ -472,10 +487,19 @@ const styles = StyleSheet.create({
   messageRow: { flexDirection: 'row', marginBottom: 12, width: '100%' },
   myRow: { justifyContent: 'flex-end' },
   theirRow: { justifyContent: 'flex-start' },
-  bubble: { maxWidth: '75%', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  bubble: { maxWidth: '78%', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6, borderRadius: 18 },
   myBubble: { backgroundColor: '#a613c4', borderBottomRightRadius: 4 },
-  theirBubble: { backgroundColor: '#141418', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.03)' },
+  theirBubble: { backgroundColor: '#141418', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)' },
   messageText: { color: '#f0f0f2', fontSize: 15, lineHeight: 20 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 },
+  myMetaRow: { alignSelf: 'flex-end' },
+  theirMetaRow: { alignSelf: 'flex-start' },
+  timeText: { fontSize: 11, marginRight: 4 },
+  myTimeText: { color: 'rgba(255, 255, 255, 0.7)' },
+  theirTimeText: { color: '#6a6a7a' },
+  tickIcon: { fontSize: 12, fontWeight: 'bold' },
+  tickSent: { color: 'rgba(255, 255, 255, 0.6)' },
+  tickRead: { color: '#38bdf8' },
   inputContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)', backgroundColor: '#0a0a0c' },
   attachButton: { padding: 8 },
   attachIcon: { fontSize: 24, color: '#8a8a9a' },

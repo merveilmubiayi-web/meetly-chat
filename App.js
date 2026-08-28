@@ -1,6 +1,7 @@
 import { Platform, LogBox } from 'react-native';
 import 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider } from './src/contexts/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 // Register LiveKit react-native globals once at app startup on native platforms.
@@ -24,7 +25,9 @@ LogBox.ignoreLogs([
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppNavigator />
+      <AuthProvider>
+        <AppNavigator />
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

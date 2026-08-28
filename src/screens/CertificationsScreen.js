@@ -1,14 +1,12 @@
-import { addDoc, collection } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function CertificationsScreen({ navigation }) {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!auth.currentUser?.uid) return;
     if (!reason.trim()) {
       Alert.alert('Informations manquantes', 'Expliquez pourquoi vous souhaitez une vérification.');
       return;
@@ -16,13 +14,10 @@ export default function CertificationsScreen({ navigation }) {
 
     try {
       setSubmitting(true);
-      await addDoc(collection(db, 'verificationRequests'), {
-        userId: auth.currentUser.uid,
-        userEmail: auth.currentUser.email || '',
-        reason: reason.trim(),
-        status: 'pending',
-        createdAt: new Date()
-      });
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('unauthorized');
+      const { error } = await supabase.from('verification_requests').insert({ user_id: userData.user.id, reason: reason.trim() });
+      if (error) throw error;
       Alert.alert('Demande envoyée', 'Votre demande de vérification a bien été enregistrée.');
       setReason('');
     } catch (error) {

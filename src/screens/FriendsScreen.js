@@ -1,17 +1,3 @@
-import {
-    addDoc,
-    arrayRemove,
-    arrayUnion,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    limit,
-    query,
-    setDoc,
-    updateDoc,
-    where
-} from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     Alert,
@@ -26,14 +12,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 import { useSafeBottomPadding } from '../utils/safeAreaHelpers';
 
 export default function FriendsScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const currentUser = auth.currentUser;
+  const [currentUser, setCurrentUser] = useState(null);
 
   const updateUserLocalState = (userId, updates) => {
     setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, ...updates } : user)));
@@ -41,25 +27,31 @@ export default function FriendsScreen({ navigation }) {
 
   // Charge quelques membres par défaut à l'ouverture de la page
   useEffect(() => {
-    fetchDefaultUsers();
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUser(data.user || null);
+      fetchDefaultUsers(data.user?.id);
+    });
   }, []);
 
-  const fetchDefaultUsers = async () => {
+  const mapProfile = (profile, followingIds = []) => ({
+    ...profile,
+    id: profile.id,
+    displayName: profile.name,
+    photoURL: profile.avatar_url,
+    isVerified: profile.is_verified,
+    followers: followingIds.includes(profile.id) ? [currentUser?.id] : [],
+  });
+
+  const fetchDefaultUsers = async (userId = currentUser?.id) => {
     setLoading(true);
     try {
-      const usersRef = collection(db, "users");
-      // On limite à 10 utilisateurs max pour l'affichage de base
-      const q = query(usersRef, limit(10)); 
-      const querySnapshot = await getDocs(q);
-      
-      const uList = [];
-      querySnapshot.forEach((doc) => {
-        // On n'affiche pas l'utilisateur actuellement connecté dans la recherche
-        if (doc.id !== currentUser?.uid) {
-          uList.push({ id: doc.id, ...doc.data() });
-        }
-      });
-      setUsers(uList);
+      const [{ data: profiles, error: profileError }, { data: follows, error: followError }] = await Promise.all([
+        supabase.from('profiles').select('*').neq('id', userId || '').limit(10),
+        userId ? supabase.from('follows').select('following_id').eq('follower_id', userId) : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (profileError || followError) throw profileError || followError;
+      const followingIds = (follows || []).map((follow) => follow.following_id);
+      setUsers((profiles || []).map((profile) => mapProfile(profile, followingIds)));
     } catch (error) {
       console.error("Erreur utilisateurs par défaut :", error);
     } finally {
@@ -77,22 +69,10 @@ export default function FriendsScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const usersRef = collection(db, "users");
-      // Recherche insensible à la casse ou exacte sur le username
-      const q = query(
-        usersRef, 
-        where("username", ">=", text.toLowerCase()), 
-        where("username", "<=", text.toLowerCase() + '\uf8ff')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const searchResults = [];
-      querySnapshot.forEach((doc) => {
-        if (doc.id !== currentUser?.uid) {
-          searchResults.push({ id: doc.id, ...doc.data() });
-        }
-      });
-      setUsers(searchResults);
+      const { data: profiles, error } = await supabase.from('profiles').select('*').or(`username.ilike.%${text.trim()}%,name.ilike.%${text.trim()}%`).neq('id', currentUser?.id || '').limit(20);
+      if (error) throw error;
+      const { data: follows } = await supabase.from('follows').select('following_id').eq('follower_id', currentUser?.id || '');
+      setUsers((profiles || []).map((profile) => mapProfile(profile, (follows || []).map((follow) => follow.following_id))));
     } catch (error) {
       console.error("Erreur recherche :", error);
     } finally {
@@ -102,27 +82,28 @@ export default function FriendsScreen({ navigation }) {
 
   // Algorithme d'initiation de conversation (Vérifie ou Crée un Chat unique)
   const handleStartChat = async (targetUser) => {
-    if (!currentUser?.uid || !targetUser?.id) return;
+    if (!currentUser?.id || !targetUser?.id) return;
 
     setLoading(true);
     try {
-      const participantsArray = [currentUser.uid, targetUser.id].sort();
-      const chatId = participantsArray.join('_');
-      const chatRef = doc(db, 'chats', chatId);
-      const existingChatSnap = await getDoc(chatRef);
-
-      if (existingChatSnap.exists()) {
-        navigation.push('ChatRoom', { chatId, recipientId: targetUser.id });
-      } else {
-        await setDoc(chatRef, {
-          participants: participantsArray,
-          lastMessage: `Discuter avec ${targetUser.displayName || 'cette personne'} ✨`,
-          lastMessageSender: currentUser.uid,
-          updatedAt: new Date()
-        });
-
-        navigation.push('ChatRoom', { chatId, recipientId: targetUser.id });
+      const { data: existingMembers } = await supabase.from('conversation_members').select('conversation_id').eq('user_id', currentUser.id);
+      const candidateIds = (existingMembers || []).map((item) => item.conversation_id);
+      let conversationId = null;
+      if (candidateIds.length) {
+        const { data: shared } = await supabase.from('conversation_members').select('conversation_id').in('conversation_id', candidateIds).eq('user_id', targetUser.id).limit(1).maybeSingle();
+        conversationId = shared?.conversation_id || null;
       }
+      if (!conversationId) {
+        const { data: conversation, error: conversationError } = await supabase.from('conversations').insert({ created_by: currentUser.id, is_group: false }).select().single();
+        if (conversationError) throw conversationError;
+        conversationId = conversation.id;
+        const { error: memberError } = await supabase.from('conversation_members').insert([
+          { conversation_id: conversationId, user_id: currentUser.id, role: 'admin' },
+          { conversation_id: conversationId, user_id: targetUser.id, role: 'member' },
+        ]);
+        if (memberError) throw memberError;
+      }
+      navigation.push('ChatRoom', { chatId: conversationId, recipientId: targetUser.id });
     } catch (error) {
       console.error('Erreur initiation chat :', error);
       Alert.alert('Erreur', 'Impossible de démarrer la discussion.');
@@ -132,95 +113,19 @@ export default function FriendsScreen({ navigation }) {
   };
 
   const handleFollowToggle = async (targetUser) => {
-    if (!currentUser?.uid) return;
+    if (!currentUser?.id) return;
 
     try {
-      const currentUserRef = doc(db, 'users', currentUser.uid);
-      const targetUserRef = doc(db, 'users', targetUser.id);
-
-      const [currentUserDocSnap, targetUserDocSnap] = await Promise.all([
-        getDoc(currentUserRef),
-        getDoc(targetUserRef)
-      ]);
-
-      if (!currentUserDocSnap.exists() || !targetUserDocSnap.exists()) {
-        Alert.alert('Erreur', 'Le profil utilisateur est introuvable.');
-        return;
-      }
-
-      const currentUserData = currentUserDocSnap.data() || {};
-      const targetUserData = targetUserDocSnap.data() || {};
-      const isFollowing = (targetUserData.followers || []).includes(currentUser.uid);
-
-      if (isFollowing) {
-        const nextFollowers = (targetUserData.followers || []).filter((id) => id !== currentUser.uid);
-        const nextFriends = (targetUserData.friends || []).filter((id) => id !== currentUser.uid);
-        updateUserLocalState(targetUser.id, {
-          followers: nextFollowers,
-          friends: nextFriends,
-          followersCount: Math.max((targetUserData.followersCount || 0) - 1, 0),
-          friendsCount: Math.max((targetUserData.friendsCount || 0) - 1, 0)
-        });
-
-        await updateDoc(currentUserRef, {
-          following: arrayRemove(targetUser.id),
-          followingCount: Math.max((currentUserData.followingCount || 0) - 1, 0),
-          friends: arrayRemove(targetUser.id),
-          friendsCount: Math.max((currentUserData.friendsCount || 0) - 1, 0)
-        });
-        await updateDoc(targetUserRef, {
-          followers: arrayRemove(currentUser.uid),
-          followersCount: Math.max((targetUserData.followersCount || 0) - 1, 0),
-          friends: arrayRemove(currentUser.uid),
-          friendsCount: Math.max((targetUserData.friendsCount || 0) - 1, 0)
-        });
+      const { data: existing, error: existingError } = await supabase.from('follows').select('follower_id').eq('follower_id', currentUser.id).eq('following_id', targetUser.id).maybeSingle();
+      if (existingError) throw existingError;
+      if (existing) {
+        const { error } = await supabase.from('follows').delete().eq('follower_id', currentUser.id).eq('following_id', targetUser.id);
+        if (error) throw error;
       } else {
-        const targetFollowsCurrentUser = (targetUserData.following || []).includes(currentUser.uid);
-        const nextFollowers = [...(targetUserData.followers || []), currentUser.uid];
-        const nextFriends = targetFollowsCurrentUser
-          ? [...(targetUserData.friends || []), currentUser.uid]
-          : (targetUserData.friends || []);
-
-        updateUserLocalState(targetUser.id, {
-          followers: nextFollowers,
-          friends: nextFriends,
-          followersCount: (targetUserData.followersCount || 0) + 1,
-          friendsCount: targetFollowsCurrentUser ? (targetUserData.friendsCount || 0) + 1 : (targetUserData.friendsCount || 0)
-        });
-
-        await updateDoc(currentUserRef, {
-          following: arrayUnion(targetUser.id),
-          followingCount: (currentUserData.followingCount || 0) + 1,
-          ...(targetFollowsCurrentUser ? {
-            friends: arrayUnion(targetUser.id),
-            friendsCount: (currentUserData.friendsCount || 0) + 1
-          } : {})
-        });
-        await updateDoc(targetUserRef, {
-          followers: arrayUnion(currentUser.uid),
-          followersCount: (targetUserData.followersCount || 0) + 1,
-          ...(targetFollowsCurrentUser ? {
-            friends: arrayUnion(currentUser.uid),
-            friendsCount: (targetUserData.friendsCount || 0) + 1
-          } : {})
-        });
-
-        await addDoc(collection(db, 'notifications'), {
-          recipientId: targetUser.id,
-          title: 'Nouvel abonné',
-          message: `${currentUserData.displayName || 'Quelqu’un'} vous a suivi.`,
-          createdAt: new Date()
-        });
-
-        if (targetFollowsCurrentUser) {
-          await addDoc(collection(db, 'notifications'), {
-            recipientId: currentUser.uid,
-            title: 'Retour d’abonnement',
-            message: `${targetUserData.displayName || 'Quelqu’un'} vous suit en retour.`,
-            createdAt: new Date()
-          });
-        }
+        const { error } = await supabase.from('follows').insert({ follower_id: currentUser.id, following_id: targetUser.id });
+        if (error) throw error;
       }
+      updateUserLocalState(targetUser.id, { followers: existing ? [] : [currentUser.id] });
     } catch (error) {
       console.error('Erreur follow:', error);
       Alert.alert('Erreur', 'Impossible de mettre à jour le suivi.');
@@ -228,8 +133,8 @@ export default function FriendsScreen({ navigation }) {
   };
 
   const renderUserItem = ({ item }) => {
-    const isFollowing = (item.followers || []).includes(currentUser?.uid);
-    const isFriend = (item.friends || []).includes(currentUser?.uid);
+    const isFollowing = (item.followers || []).includes(currentUser?.id);
+    const isFriend = isFollowing;
     const buttonLabel = isFriend ? 'Ami' : isFollowing ? 'Abonné' : 'Suivre';
 
     return (

@@ -1,7 +1,6 @@
-import { addDoc, collection } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function HelpScreen({ navigation }) {
   const [message, setMessage] = useState('');
@@ -15,12 +14,10 @@ export default function HelpScreen({ navigation }) {
 
     try {
       setSending(true);
-      await addDoc(collection(db, 'supportMessages'), {
-        userId: auth.currentUser?.uid || 'anonymous',
-        email: auth.currentUser?.email || 'unknown',
-        message: message.trim(),
-        createdAt: new Date()
-      });
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('unauthorized');
+      const { error } = await supabase.from('support_messages').insert({ user_id: userData.user.id, message: message.trim() });
+      if (error) throw error;
       Alert.alert('Message envoyé', 'Votre demande a bien été transmise à l’équipe Meetly.');
       setMessage('');
     } catch (error) {

@@ -1,5 +1,3 @@
-import { signOut } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     Image,
@@ -11,7 +9,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function CustomDrawerContent({ navigation }) {
   const [openSection, setOpenSection] = useState(null);
@@ -20,16 +18,16 @@ export default function CustomDrawerContent({ navigation }) {
   const [userData, setUserData] = useState(null);
 
   useEffect(() => {
-    if (!auth.currentUser?.uid) return;
-
-    const userDocRef = doc(db, 'users', auth.currentUser.uid);
-    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setUserData(docSnap.data());
-      }
-    });
-
-    return () => unsubscribe();
+    let active = true;
+    const loadProfile = async () => {
+      const { data: userDataResult } = await supabase.auth.getUser();
+      const user = userDataResult.user;
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if (active) setUserData(data ? { ...data, photoURL: data.avatar_url, displayName: data.name, isVerified: data.is_verified } : null);
+    };
+    loadProfile();
+    return () => { active = false; };
   }, []);
 
   const toggleSection = (sectionName) => {
@@ -38,8 +36,7 @@ export default function CustomDrawerContent({ navigation }) {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      // AsyncStorage.clear() -> À ajouter ici si tu stockes des jetons locaux
+      await supabase.auth.signOut();
       navigation.replace('LoginScreen');
     } catch (error) {
       console.log("Erreur déconnexion:", error);
@@ -51,11 +48,11 @@ export default function CustomDrawerContent({ navigation }) {
       {/* 👤 HEADER PROFILE (Section 1) */}
       <View style={styles.profileHeader}>
         <Image 
-          source={{ uri: userData?.photoURL || auth.currentUser?.photoURL || 'https://via.placeholder.com/150' }} 
+          source={{ uri: userData?.photoURL || 'https://via.placeholder.com/150' }} 
           style={styles.avatar} 
         />
         <View style={styles.profileInfo}>
-          <Text style={styles.username}>{userData?.displayName || auth.currentUser?.displayName || 'Meetly'}</Text>
+          <Text style={styles.username}>{userData?.displayName || 'Meetly'}</Text>
           <View style={styles.badgeContainer}>
             <Text style={styles.badgeText}>{userData?.isVerified ? 'Compte vérifié ⚡' : 'Compte standard'}</Text>
           </View>

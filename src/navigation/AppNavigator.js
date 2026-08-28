@@ -1,52 +1,40 @@
 import { createNavigationContainerRef, NavigationContainer, StackActions } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import BottomTabBar from '../components/BottomTabBar';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import CertificationsScreen from '../screens/CertificationsScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
+import CallScreen from '../screens/CallScreen';
+import CreateGroupScreen from '../screens/CreateGroupScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import HelpScreen from '../screens/HelpScreen';
 import HomeScreen from '../screens/HomeScreen';
+import GroupChatScreen from '../screens/GroupChatScreen';
 import LiveCallScreen from '../screens/LiveCallScreen';
+import LiveStreamScreen from '../screens/LiveStreamScreen';
+import LiveViewerScreen from '../screens/LiveViewerScreen';
 import LoginScreen from '../screens/LoginScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ProfileVisibilityScreen from '../screens/ProfileVisibilityScreen';
+import RecentAccountsScreen from '../screens/RecentAccountsScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import SavedPostsScreen from '../screens/SavedPostsScreen';
 import SearchResultsScreen from '../screens/SearchResultsScreen';
+import StoryViewer from '../screens/StoryViewer';
 import StudioPostScreen from '../screens/StudioPostScreen';
 import TikTokScreen from '../screens/TikTokScreen';
 
 const Stack = createStackNavigator();
 
 export default function AppNavigator() {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setUser(data.session?.user || null);
-        setLoading(false);
-      }
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-      setLoading(false);
-    });
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+  const { user, loading } = useAuth();
 
   const navigationRef = createNavigationContainerRef();
   const [currentRoute, setCurrentRoute] = useState('HomeScreen');
@@ -72,26 +60,38 @@ export default function AppNavigator() {
       }}
     >
       <View style={styles.appShell}>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={user ? 'HomeScreen' : 'LoginScreen'}>
-          <Stack.Screen name="LoginScreen" component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="HomeScreen" component={HomeScreen} />
-          <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
-          <Stack.Screen name="AccountSettingsScreen" component={AccountSettingsScreen} />
-          <Stack.Screen name="FriendsScreen" component={FriendsScreen} />
-          <Stack.Screen name="ChatListScreen" component={ChatListScreen} />
-          <Stack.Screen name="ChatRoom" component={ChatScreen} />
-          <Stack.Screen name="StudioPostScreen" component={StudioPostScreen} />
-          <Stack.Screen name="LiveCallScreen" component={LiveCallScreen} />
-          <Stack.Screen name="TikTokScreen" component={TikTokScreen} />
-          <Stack.Screen name="NotificationScreen" component={NotificationScreen} />
-          <Stack.Screen name="HelpScreen" component={HelpScreen} />
-          <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
-          <Stack.Screen name="SearchResults" component={SearchResultsScreen} />
-          <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
-          <Stack.Screen name="ProfileVisibility" component={ProfileVisibilityScreen} />
-          <Stack.Screen name="Certifications" component={CertificationsScreen} />
-        </Stack.Navigator>
+        {user ? (
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="HomeScreen" component={HomeScreen} />
+            <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+            <Stack.Screen name="AccountSettingsScreen" component={AccountSettingsScreen} />
+            <Stack.Screen name="FriendsScreen" component={FriendsScreen} />
+            <Stack.Screen name="ChatListScreen" component={ChatListScreen} />
+            <Stack.Screen name="ChatRoom" component={ChatScreen} />
+            <Stack.Screen name="GroupChatScreen" component={GroupChatScreen} />
+            <Stack.Screen name="CreateGroupScreen" component={CreateGroupScreen} />
+            <Stack.Screen name="CallScreen" component={CallScreen} />
+            <Stack.Screen name="StudioPostScreen" component={StudioPostScreen} />
+            <Stack.Screen name="LiveCallScreen" component={LiveCallScreen} />
+            <Stack.Screen name="LiveStreamScreen" component={LiveStreamScreen} />
+            <Stack.Screen name="LiveViewerScreen" component={LiveViewerScreen} />
+            <Stack.Screen name="TikTokScreen" component={TikTokScreen} />
+            <Stack.Screen name="StoryViewer" component={StoryViewer} />
+            <Stack.Screen name="NotificationScreen" component={NotificationScreen} />
+            <Stack.Screen name="HelpScreen" component={HelpScreen} />
+            <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
+            <Stack.Screen name="SearchResults" component={SearchResultsScreen} />
+            <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+            <Stack.Screen name="ProfileVisibility" component={ProfileVisibilityScreen} />
+            <Stack.Screen name="Certifications" component={CertificationsScreen} />
+          </Stack.Navigator>
+        ) : (
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="RecentAccounts" component={RecentAccountsScreen} />
+            <Stack.Screen name="LoginScreen" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </Stack.Navigator>
+        )}
 
         {user && ['HomeScreen', 'ChatListScreen', 'NotificationScreen', 'ProfileScreen'].includes(currentRoute) && (
           <BottomTabBar
@@ -120,7 +120,6 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     marginBottom: 20,
-    resizeMode: 'contain',
   },
   welcomeTitle: {
     color: '#fff',

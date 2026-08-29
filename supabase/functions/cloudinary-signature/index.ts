@@ -34,11 +34,18 @@ Deno.serve(async (request) => {
 
   let body: { resourceType?: unknown; folder?: unknown };
   try {
-    body = await request.json();
+    const parsedBody: unknown = await request.json();
+    if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+      return json({ error: 'invalid_body' }, 400);
+    }
+    body = parsedBody as { resourceType?: unknown; folder?: unknown };
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
-  const requestedType = body.resourceType as string;
+  const requestedType = typeof body.resourceType === 'string' ? body.resourceType : '';
+  if (requestedType && !['image', 'video', 'audio', 'auto'].includes(requestedType)) {
+    return json({ error: 'invalid_resource_type' }, 400);
+  }
   const resourceType = requestedType === 'audio' ? 'video' : ['video', 'auto'].includes(requestedType) ? requestedType : 'image';
   const folder = typeof body.folder === 'string' && /^[A-Za-z0-9/_-]{1,80}$/.test(body.folder)
     ? body.folder

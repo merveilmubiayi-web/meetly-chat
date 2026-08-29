@@ -143,7 +143,6 @@ const styles = StyleSheet.create({
   appShell: {
     flex: 1,
     backgroundColor: '#0a0a0c',
-    overflow: 'hidden',
   },
   navigatorContainer: {
     flex: 1,

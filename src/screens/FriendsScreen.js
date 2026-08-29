@@ -209,6 +209,7 @@ export default function FriendsScreen({ navigation }) {
           maxToRenderPerBatch={8}
           windowSize={7}
           removeClippedSubviews
+          style={styles.list}
           contentContainerStyle={[styles.listContainer, bottomPadding]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
@@ -267,6 +268,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  list: {
+    flex: 1,
   },
   listContainer: {
     paddingHorizontal: 16,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -25,24 +25,16 @@ export default function FriendsScreen({ navigation }) {
     setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, ...updates } : user)));
   };
 
-  // Charge quelques membres par défaut à l'ouverture de la page
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setCurrentUser(data.user || null);
-      fetchDefaultUsers(data.user?.id);
-    });
-  }, []);
-
-  const mapProfile = (profile, followingIds = []) => ({
+  const mapProfile = useCallback((profile, followingIds = [], viewerId = currentUser?.id) => ({
     ...profile,
     id: profile.id,
     displayName: profile.name,
     photoURL: profile.avatar_url,
     isVerified: profile.is_verified,
-    followers: followingIds.includes(profile.id) ? [currentUser?.id] : [],
-  });
+    followers: followingIds.includes(profile.id) ? [viewerId] : [],
+  }), [currentUser?.id]);
 
-  const fetchDefaultUsers = async (userId = currentUser?.id) => {
+  const fetchDefaultUsers = useCallback(async (userId = currentUser?.id) => {
     setLoading(true);
     try {
       const [{ data: profiles, error: profileError }, { data: follows, error: followError }] = await Promise.all([
@@ -51,13 +43,23 @@ export default function FriendsScreen({ navigation }) {
       ]);
       if (profileError || followError) throw profileError || followError;
       const followingIds = (follows || []).map((follow) => follow.following_id);
-      setUsers((profiles || []).map((profile) => mapProfile(profile, followingIds)));
+      setUsers((profiles || []).map((profile) => mapProfile(profile, followingIds, userId)));
     } catch (error) {
       console.error("Erreur utilisateurs par défaut :", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser?.id, mapProfile]);
+
+  // Charge quelques membres par défaut à l'ouverture de la page
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUser(data.user || null);
+      fetchDefaultUsers(data.user?.id);
+    });
+    const unsubscribeFocus = navigation.addListener('focus', () => fetchDefaultUsers());
+    return unsubscribeFocus;
+  }, [fetchDefaultUsers, navigation]);
 
   // Logique de recherche dynamique par nom ou username
   const handleSearch = async (text) => {
@@ -72,7 +74,7 @@ export default function FriendsScreen({ navigation }) {
       const { data: profiles, error } = await supabase.from('profiles').select('*').or(`username.ilike.%${text.trim()}%,name.ilike.%${text.trim()}%`).neq('id', currentUser?.id || '').limit(20);
       if (error) throw error;
       const { data: follows } = await supabase.from('follows').select('following_id').eq('follower_id', currentUser?.id || '');
-      setUsers((profiles || []).map((profile) => mapProfile(profile, (follows || []).map((follow) => follow.following_id))));
+      setUsers((profiles || []).map((profile) => mapProfile(profile, (follows || []).map((follow) => follow.following_id), currentUser?.id)));
     } catch (error) {
       console.error("Erreur recherche :", error);
     } finally {
@@ -134,8 +136,7 @@ export default function FriendsScreen({ navigation }) {
 
   const renderUserItem = ({ item }) => {
     const isFollowing = (item.followers || []).includes(currentUser?.id);
-    const isFriend = isFollowing;
-    const buttonLabel = isFriend ? 'Ami' : isFollowing ? 'Abonné' : 'Suivre';
+    const buttonLabel = isFollowing ? 'Abonné' : 'Suivre';
 
     return (
       <View style={styles.userCard}>
@@ -153,10 +154,10 @@ export default function FriendsScreen({ navigation }) {
         </View>
         
         <View style={styles.actionsGroup}>
-          <TouchableOpacity style={[styles.followButton, (isFollowing || isFriend) && styles.followButtonActive]} onPress={() => handleFollowToggle(item)}>
+          <TouchableOpacity style={[styles.followButton, isFollowing && styles.followButtonActive]} onPress={() => handleFollowToggle(item)}>
             <Text style={styles.followButtonText}>{buttonLabel}</Text>
           </TouchableOpacity>
-          {isFriend && (
+          {isFollowing && (
             <TouchableOpacity style={styles.messageButton} onPress={() => handleStartChat(item)}>
               <Text style={styles.messageButtonText}>Msg</Text>
             </TouchableOpacity>
@@ -204,6 +205,10 @@ export default function FriendsScreen({ navigation }) {
           data={users}
           keyExtractor={(item) => item.id}
           renderItem={renderUserItem}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
           contentContainerStyle={[styles.listContainer, bottomPadding]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={

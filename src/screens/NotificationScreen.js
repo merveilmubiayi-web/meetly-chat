@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import GlassIconBadge from '../components/GlassIconBadge';
+import CommentGlyph from '../components/CommentGlyph';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { supabase } from '../lib/supabase';
 
 const getNotificationDetails = (type) => {
   switch (type) {
     case 'like':
-      return { icon: '❤️', label: 'Mention J’aime', color: '#ef4444' };
+      return { icon: '♥', label: 'Mention J’aime', color: '#ef4444' };
     case 'comment':
-      return { icon: '💬', label: 'Nouveau commentaire', color: '#3b82f6' };
+      return { icon: <CommentGlyph color="#3b82f6" />, label: 'Nouveau commentaire', color: '#3b82f6' };
     case 'follow':
-      return { icon: '👤', label: 'Nouvel abonné', color: '#a855f7' };
+      return { icon: '○', label: 'Nouvel abonné', color: '#a855f7' };
     case 'message':
-      return { icon: '✉️', label: 'Nouveau message', color: '#10b981' };
+      return { icon: '□', label: 'Nouveau message', color: '#10b981' };
     case 'call':
-      return { icon: '📞', label: 'Appel manqué', color: '#f59e0b' };
+      return { icon: '◉', label: 'Appel manqué', color: '#f59e0b' };
     default:
       return { icon: '🔔', label: 'Notification', color: '#a613c4' };
   }
@@ -89,9 +91,7 @@ export default function NotificationScreen({ navigation }) {
         onPress={() => markAsRead(item)}
         activeOpacity={0.8}
       >
-        <View style={[styles.iconContainer, { backgroundColor: `${details.color}20` }]}>
-          <Text style={styles.typeIcon}>{details.icon}</Text>
-        </View>
+        <GlassIconBadge icon={details.icon} color={details.color} style={styles.iconContainer} />
 
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
@@ -138,7 +138,7 @@ export default function NotificationScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyIcon}>🔔</Text>
+              <GlassIconBadge icon="🔔" color="#a613c4" size={56} style={styles.emptyIcon} />
               <Text style={styles.emptyTitle}>Aucune notification</Text>
               <Text style={styles.emptySubtitle}>Les nouvelles activités (likes, commentaires, messages) apparaîtront ici.</Text>
             </View>

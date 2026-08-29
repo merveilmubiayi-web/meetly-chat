@@ -1,7 +1,7 @@
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { completeNativeGoogleSession, getGoogleRedirectUri } from '../config/auth';
 import { supabase } from '../lib/supabase';
 
 export default function RegisterScreen({ navigation }) {
@@ -17,7 +17,7 @@ export default function RegisterScreen({ navigation }) {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const redirectTo = makeRedirectUri({ scheme: 'meetlyneuf' });
+      const redirectTo = getGoogleRedirectUri();
       const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true } });
       if (error) throw error;
       if (!data?.url) throw new Error('URL Google manquante');
@@ -25,7 +25,8 @@ export default function RegisterScreen({ navigation }) {
         window.location.assign(data.url);
         return;
       }
-      await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type === 'success') await completeNativeGoogleSession(result);
     } catch (error) {
       console.error('Supabase Google login error', error);
       Alert.alert('Connexion Google impossible', error.message || 'Configure Google dans Supabase Authentication > Providers.');
@@ -55,8 +56,11 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert("Erreur", "Le mot de passe doit contenir au moins 6 caractères.");
+    const passwordHasRequiredFormat = password.length >= 8
+      && /[A-Z]/.test(password)
+      && /[^A-Za-z0-9]/.test(password);
+    if (!passwordHasRequiredFormat) {
+      Alert.alert("Erreur", "Le mot de passe doit contenir au moins 8 caractères, une majuscule et un symbole.");
       return;
     }
 
@@ -99,7 +103,12 @@ export default function RegisterScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.scrollContainer}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      style={styles.container}
+    >
       <Text style={styles.title}>Rejoins Meetly ✨</Text>
 
       <TextInput style={styles.input} placeholder="Nom complet" placeholderTextColor="#8a8a9a" value={name} onChangeText={setName} />
@@ -115,7 +124,7 @@ export default function RegisterScreen({ navigation }) {
       <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={handleGoogleLogin} disabled={loading}>
         <Text style={styles.googleButtonText}>Se connecter avec Google</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -126,11 +135,8 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
   },
   container: {
-    flex: 1,
     backgroundColor: '#0a0a0c',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 32,
+    flex: 1,
   },
   title: { fontSize: 28, fontWeight: 'bold', color: '#f0f0f2', marginBottom: 32, textAlign: 'center' },
   input: { backgroundColor: '#141418', color: '#f0f0f2', padding: 16, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.07)' },

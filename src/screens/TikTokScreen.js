@@ -5,6 +5,7 @@ import {
     Dimensions,
     FlatList,
     Image,
+    PanResponder,
     Share,
     StatusBar,
     StyleSheet,
@@ -12,6 +13,8 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import GlassIconButton from '../components/GlassIconButton';
+import CommentGlyph from '../components/CommentGlyph';
 import Video from 'react-native-video'; // Composant vidéo natif ultra performant
 import SkeletonLoader from '../components/SkeletonLoader';
 import CommentsModal from '../components/CommentsModal';
@@ -19,7 +22,7 @@ import { supabase } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
 
-export default function TikTokScreen({ route }) {
+export default function TikTokScreen({ navigation, route }) {
   const startVideoId = route.params?.startVideoId || null;
   const [currentUserId, setCurrentUserId] = useState(null);
   const [videos, setVideos] = useState([]);
@@ -28,6 +31,14 @@ export default function TikTokScreen({ route }) {
   const [preloadUri, setPreloadUri] = useState(null);
   const [commentsPost, setCommentsPost] = useState(null);
   const flatListRef = useRef(null);
+  const swipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx > 100) navigation.replace('HomeScreen');
+      },
+    })
+  ).current;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id || null));
@@ -81,7 +92,7 @@ export default function TikTokScreen({ route }) {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [startVideoId]);
 
   useEffect(() => {
     const nextIndex = activeTrackIndex + 1;
@@ -274,28 +285,41 @@ export default function TikTokScreen({ route }) {
           </View>
 
           {/* Like */}
-          <TouchableOpacity style={styles.actionButton} onPress={() => handleLike(item)}>
-            <Text style={[styles.actionIcon, { color: isLiked ? '#ff3b30' : '#fff' }]}>{isLiked ? '❤️' : '🤍'}</Text>
-            <Text style={styles.actionText}>{item.likesCount || 0}</Text>
-          </TouchableOpacity>
+          <GlassIconButton
+            icon={isLiked ? '♥' : '♡'}
+            label={String(item.likesCount || 0)}
+            active={isLiked}
+            style={styles.actionButton}
+            onPress={() => handleLike(item)}
+            accessibilityLabel={isLiked ? 'Retirer le j’aime' : 'Aimer la vidéo'}
+          />
 
-          <TouchableOpacity style={styles.actionButton} onPress={() => setCommentsPost(item)}>
-            <Text style={styles.actionIcon}>💬</Text>
-            <Text style={styles.actionText}>{item.comments_count || 0}</Text>
-          </TouchableOpacity>
+          <GlassIconButton
+            icon={<CommentGlyph color="#ffffff" />}
+            label={String(item.comments_count || 0)}
+            style={styles.actionButton}
+            onPress={() => setCommentsPost(item)}
+            accessibilityLabel="Afficher les commentaires"
+          />
           
           {/* Partager */}
-          <TouchableOpacity style={styles.actionButton} onPress={() => handleShare(item)}>
-            <Text style={styles.actionIcon}>🔗</Text>
-            <Text style={styles.actionText}>Partager</Text>
-          </TouchableOpacity>
+          <GlassIconButton
+            icon='↗'
+            label="Partager"
+            style={styles.actionButton}
+            onPress={() => handleShare(item)}
+            accessibilityLabel="Partager la vidéo"
+          />
         </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...swipeResponder.panHandlers}>
+      <View style={styles.homeButton}>
+        <GlassIconButton icon="⌂" onPress={() => navigation.replace('HomeScreen')} accessibilityLabel="Retourner à l'accueil" />
+      </View>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       
       {loading ? (
@@ -412,22 +436,9 @@ const styles = StyleSheet.create({
   actionButton: {
     alignItems: 'center',
     marginBottom: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    padding: 10,  
-    borderRadius: 30,
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
+    width: 58,
   },
-  actionIcon: {
-    fontSize: 22,
-  },
-  actionText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
+  homeButton: { position: 'absolute', top: 44, left: 16, zIndex: 20 },
   floatingHeartContainer: {
     position: 'absolute',
     top: height / 2 - 60,

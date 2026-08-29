@@ -1,8 +1,8 @@
 
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { completeNativeGoogleSession, getGoogleRedirectUri } from '../config/auth';
 import { supabase } from '../lib/supabase';
 
 export default function LoginScreen({ navigation }) {
@@ -20,7 +20,7 @@ export default function LoginScreen({ navigation }) {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const redirectTo = makeRedirectUri({ scheme: 'meetlyneuf' });
+      const redirectTo = getGoogleRedirectUri();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo, skipBrowserRedirect: true },
@@ -31,7 +31,8 @@ export default function LoginScreen({ navigation }) {
         window.location.assign(data.url);
         return;
       }
-      await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type === 'success') await completeNativeGoogleSession(result);
     } catch (error) {
       console.error('Supabase Google login error', error);
       Alert.alert('Connexion Google impossible', error.message || 'Configure Google dans Supabase Authentication > Providers.');

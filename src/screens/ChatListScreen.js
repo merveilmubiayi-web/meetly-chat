@@ -73,9 +73,9 @@ export default function ChatListScreen({ navigation }) {
         const lastMsg = lastMsgMap[conversation.id];
         let lastMsgText = 'Aucun message';
         if (lastMsg) {
-          if (lastMsg.media_type === 'audio') lastMsgText = '🎧 Note vocale';
-          else if (lastMsg.media_type === 'video') lastMsgText = '📹 Vidéo';
-          else if (lastMsg.media_type === 'image') lastMsgText = '🖼️ Photo';
+          if (lastMsg.media_type === 'audio') lastMsgText = 'Note vocale';
+          else if (lastMsg.media_type === 'video') lastMsgText = 'Vidéo';
+          else if (lastMsg.media_type === 'image') lastMsgText = 'Photo';
           else lastMsgText = lastMsg.body || 'Message';
         }
         return {
@@ -89,9 +89,10 @@ export default function ChatListScreen({ navigation }) {
       setLoading(false);
     };
     loadChats();
+    const unsubscribeFocus = navigation.addListener('focus', loadChats);
     const channel = supabase.channel('conversation-list').on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, loadChats).on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, loadChats).on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadChats).subscribe();
-    return () => { active = false; supabase.removeChannel(channel); };
-  }, []);
+    return () => { active = false; unsubscribeFocus(); supabase.removeChannel(channel); };
+  }, [navigation]);
 
   const renderChatItem = ({ item }) => {
     const otherParticipantId = item.participants.find(id => id !== currentUser?.id);

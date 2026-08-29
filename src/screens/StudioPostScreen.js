@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Alert, Image, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestLiveKitToken } from '../config/api';
+import GlassIconBadge from '../components/GlassIconBadge';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
@@ -131,9 +132,9 @@ export default function StudioPostScreen({ navigation, route }) {
       {!contentType ? (
         <View style={styles.card}>
           <Text style={styles.label}>Choisir le type</Text>
-          {[['image', '🖼️', 'Image'], ['text', '✍️', 'Texte'], ['video', '🎥', 'Vidéo'], ['story', '⭕', 'Story'], ['live', '🔴', 'Live']].map(([type, icon, label]) => (
+          {[['image', '▧', 'Image'], ['text', 'T', 'Texte'], ['video', '▶', 'Vidéo'], ['story', '○', 'Story'], ['live', '●', 'Live']].map(([type, icon, label]) => (
             <TouchableOpacity key={type} style={styles.optionButton} onPress={() => selectType(type)}>
-              <Text style={styles.createEmoji}>{icon}</Text><Text style={styles.optionText}>{label}</Text>
+              <GlassIconBadge icon={icon} size={34} /><Text style={styles.optionText}>{label}</Text>
             </TouchableOpacity>
           ))}
         </View>

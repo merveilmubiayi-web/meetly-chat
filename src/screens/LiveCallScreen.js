@@ -2,7 +2,10 @@ import { Audio } from 'expo-av';
 import { Room, RoomEvent } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import GlassIconButton from '../components/GlassIconButton';
+import MicrophoneGlyph from '../components/MicrophoneGlyph';
 import { livekitConfig } from '../config/livekit';
+import { supabase } from '../lib/supabase';
 
 // LiveCallScreen: minimal in-call UI with permission, mute and hangup controls.
 // Full LiveKit integration is left as TODO: when you have a backend token and
@@ -10,14 +13,27 @@ import { livekitConfig } from '../config/livekit';
 
 export default function LiveCallScreen({ navigation, route }) {
   const roomParam = route?.params?.room || '';
+  const conversationId = route?.params?.conversationId || null;
   const mode = route?.params?.mode || 'audio';
   const providedToken = route?.params?.token || null;
 
-  const [roomName, setRoomName] = useState(roomParam || `meetly-${Math.floor(Math.random() * 9000 + 1000)}`);
+  const [roomName] = useState(roomParam || `meetly-${Math.floor(Math.random() * 9000 + 1000)}`);
   const [joined, setJoined] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const roomRef = useRef(null);
+  const callSessionIdRef = useRef(null);
+
+  const closeCallSession = async (status = 'ended') => {
+    const sessionId = callSessionIdRef.current;
+    if (!sessionId) return;
+    const { error } = await supabase
+      .from('call_sessions')
+      .update({ status, ended_at: new Date().toISOString() })
+      .eq('id', sessionId);
+    if (error) console.warn('Call session close failed:', error.message);
+    callSessionIdRef.current = null;
+  };
 
   useEffect(() => {
     return () => {
@@ -28,7 +44,8 @@ export default function LiveCallScreen({ navigation, route }) {
           r.disconnect().catch(() => {});
           roomRef.current = null;
         }
-      } catch (e) {
+        closeCallSession();
+      } catch {
         // ignore
       }
     };
@@ -59,14 +76,11 @@ export default function LiveCallScreen({ navigation, route }) {
     setConnecting(true);
 
     if (!providedToken) {
-      setTimeout(() => {
-        setConnecting(false);
-        setJoined(true);
-        Alert.alert(
-          'Appel indisponible',
-          'Aucun token LiveKit fourni. Vérifie la configuration de la fonction livekit-token.'
-        );
-      }, 700);
+      setConnecting(false);
+      Alert.alert(
+        'Appel indisponible',
+        'Aucun token LiveKit fourni. Vérifie la configuration de la fonction livekit-token.'
+      );
       return;
     }
 
@@ -90,8 +104,17 @@ export default function LiveCallScreen({ navigation, route }) {
 
       room.on(RoomEvent.Disconnected, () => {
         setJoined(false);
+        closeCallSession();
       });
 
+      const { data: session } = await supabase.from('call_sessions').insert({
+        conversation_id: conversationId,
+        room_name: roomName,
+        initiated_by: room.localParticipant.identity,
+        call_type: mode === 'video' ? 'video' : 'audio',
+        status: 'started',
+      }).select('id').single();
+      callSessionIdRef.current = session?.id || null;
       setJoined(true);
     } catch (err) {
       console.error('LiveKit connect failed', err);
@@ -111,6 +134,7 @@ export default function LiveCallScreen({ navigation, route }) {
     } catch (e) {
       console.warn('hangup error', e);
     }
+    closeCallSession();
     setJoined(false);
     setIsMuted(false);
     Alert.alert('Appel terminé', 'Vous avez quitté la salle.');
@@ -154,13 +178,19 @@ export default function LiveCallScreen({ navigation, route }) {
           </TouchableOpacity>
         ) : (
           <View style={styles.inCallControls}>
-            <TouchableOpacity style={[styles.iconButton, isMuted ? styles.iconButtonMuted : null]} onPress={toggleMute}>
-              <Text style={styles.iconText}>{isMuted ? '🔇' : '🎤'}</Text>
-            </TouchableOpacity>
+            <GlassIconButton
+              icon={isMuted ? '×' : <MicrophoneGlyph color="#ffffff" />}
+              style={[styles.iconButton, isMuted ? styles.iconButtonMuted : null]}
+              onPress={toggleMute}
+              accessibilityLabel={isMuted ? 'Réactiver le microphone' : 'Couper le microphone'}
+            />
 
-            <TouchableOpacity style={[styles.iconButton, styles.hangupButton]} onPress={handleHangup}>
-              <Text style={styles.iconText}>📞</Text>
-            </TouchableOpacity>
+            <GlassIconButton
+              icon="☎"
+              style={[styles.iconButton, styles.hangupButton]}
+              onPress={handleHangup}
+              accessibilityLabel="Raccrocher"
+            />
           </View>
         )}
 

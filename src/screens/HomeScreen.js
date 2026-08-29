@@ -22,6 +22,8 @@ import {
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import CustomDrawerContent from '../components/CustomDrawerContent';
+import CommentGlyph from '../components/CommentGlyph';
+import GlassIconButton from '../components/GlassIconButton';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { requestLiveKitToken } from '../config/api';
 import { supabase } from '../lib/supabase';
@@ -398,8 +400,8 @@ export default function HomeScreen({ navigation }) {
     let active = true;
     const loadFeed = async () => {
       const [storiesResult, postsResult] = await Promise.all([
-        supabase.from('stories').select('*').order('created_at', { ascending: false }),
-        supabase.from('posts').select('*').eq('is_story', false).order('created_at', { ascending: false }),
+        supabase.from('stories').select('*').order('created_at', { ascending: false }).limit(50),
+        supabase.from('posts').select('*').eq('is_story', false).order('created_at', { ascending: false }).limit(30),
       ]);
       if (!active) return;
       if (storiesResult.error || postsResult.error) {
@@ -543,7 +545,7 @@ export default function HomeScreen({ navigation }) {
     const isSaved = savedPostIds.includes(item.id);
     const userReactionKey = userReactions[item.id];
     const userReactionObj = REACTIONS.find((r) => r.key === userReactionKey);
-    const reactionIcon = userReactionObj ? userReactionObj.emoji : isLiked ? '❤️' : '🤍';
+    const reactionIcon = userReactionObj ? '♥' : isLiked ? '♥' : '♡';
     const isReactionActive = Boolean(userReactionObj || isLiked);
     return (
       <View style={styles.postContainer}>
@@ -609,28 +611,37 @@ export default function HomeScreen({ navigation }) {
 
         <View style={styles.postActions}>
           <View style={styles.leftActions}>
-            <TouchableOpacity
+            <GlassIconButton
+              icon={reactionIcon}
+              label={String(item.likesCount || 0)}
+              active={isReactionActive}
               style={styles.actionButton}
               onPress={() => handleLike(item)}
               onLongPress={() => setActiveReactionPostId(activeReactionPostId === item.id ? null : item.id)}
-            >
-              <Text style={[styles.actionIcon, { color: isReactionActive ? (userReactionObj?.color || '#ff3b30') : '#fff' }]}>
-                {reactionIcon}
-              </Text>
-              <Text style={styles.actionText}>{item.likesCount || 0}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => openComments(item)}>
-              <Text style={styles.actionIcon}>💬</Text>
-              <Text style={styles.actionText}>{item.commentsCount || (commentsByPost[item.id] || []).length || 0}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => handleShare(item)}>
-              <Text style={styles.actionIcon}>↪️</Text>
-              <Text style={styles.actionText}>Partager</Text>
-            </TouchableOpacity>
+              accessibilityLabel="Aimer la publication"
+            />
+            <GlassIconButton
+              icon={<CommentGlyph color="#ffffff" />}
+              label={String(item.commentsCount || (commentsByPost[item.id] || []).length || 0)}
+              style={styles.actionButton}
+              onPress={() => openComments(item)}
+              accessibilityLabel="Afficher les commentaires"
+            />
+            <GlassIconButton
+              icon="↗"
+              label="Partager"
+              style={styles.actionButton}
+              onPress={() => handleShare(item)}
+              accessibilityLabel="Partager la publication"
+            />
           </View>
-          <TouchableOpacity onPress={() => toggleSavePost(item)}>
-            <Text style={[styles.actionIcon, { color: isSaved ? '#a613c4' : '#fff' }]}>{isSaved ? '🔖' : '🤍'}</Text>
-          </TouchableOpacity>
+          <GlassIconButton
+            icon={isSaved ? '◆' : '◇'}
+            active={isSaved}
+            style={styles.saveActionButton}
+            onPress={() => toggleSavePost(item)}
+            accessibilityLabel={isSaved ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+          />
         </View>
         {(commentsByPost[item.id] || []).length > 0 && (
           <View style={styles.commentsSection}>
@@ -775,8 +786,14 @@ export default function HomeScreen({ navigation }) {
             data={posts}
             keyExtractor={(item) => item.id}
             renderItem={renderPostItem}
+            initialNumToRender={4}
+            maxToRenderPerBatch={4}
+            windowSize={7}
+            removeClippedSubviews
             showsVerticalScrollIndicator={false}
             style={styles.feedList}
+            refreshing={loading}
+            onRefresh={() => setReloadKey((value) => value + 1)}
             contentContainerStyle={[styles.scrollListPadding, { paddingBottom: 92 + insets.bottom }]}
             ListHeaderComponent={
               <View style={styles.headerExtension}>
@@ -1140,8 +1157,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 20,
   },
-  actionIcon: {
-    fontSize: 18,
+  saveActionButton: {
+    width: 50,
+    height: 44,
   },
   actionText: {
     color: '#8a8a9a',

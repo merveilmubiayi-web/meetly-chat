@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rapport d'audit Meetly</title>
+  <style>
+    :root { --ink:#18212b; --muted:#5d6a75; --line:#dbe3e8; --paper:#fff; --bg:#f3f6f8; --blue:#1769aa; --green:#18794e; --orange:#a85b00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    main { max-width:1180px; margin:auto; padding:32px 20px 64px; }
+    header { padding:32px; color:#fff; background:linear-gradient(135deg,#173b56,#1769aa); border-radius:18px; box-shadow:0 12px 32px #173b5626; }
+    h1 { margin:0 0 8px; font-size:clamp(28px,5vw,48px); letter-spacing:-.03em; }
+    h2 { margin:36px 0 14px; font-size:26px; }
+    h3 { margin:0 0 8px; font-size:18px; }
+    p { margin:8px 0; }
+    .meta { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
+    .pill, .status { display:inline-flex; align-items:center; border-radius:999px; padding:5px 10px; font-size:13px; font-weight:700; }
+    .pill { background:#ffffff24; color:#fff; }
+    .status { background:#e8eef2; color:var(--muted); }
+    .done { background:#d9f5e7; color:var(--green); }
+    .risk { background:#fff0d8; color:var(--orange); }
+    .critical { background:#ffe2df; color:var(--red); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; }
+    .card, table { background:var(--paper); border:1px solid var(--line); border-radius:12px; box-shadow:0 4px 16px #18212b0a; }
+    .card { padding:18px; }
+    .metric { font-size:34px; font-weight:800; color:var(--blue); }
+    table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; }
+    th, td { padding:13px 14px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); }
+    th { color:#fff; background:#24485e; font-size:13px; }
+    tr:last-child td { border-bottom:0; }
+    code { padding:2px 5px; color:#173b56; background:#e9f0f4; border-radius:4px; }
+    .step { display:grid; grid-template-columns:42px 1fr; gap:14px; align-items:start; margin:12px 0; padding:16px; background:#fff; border:1px solid var(--line); border-radius:12px; }
+    .num { display:grid; place-items:center; width:32px; height:32px; color:#fff; background:var(--blue); border-radius:50%; font-weight:800; }
+    .note { padding:14px 16px; border-left:4px solid var(--orange); background:#fff8eb; }
+    footer { margin-top:38px; color:var(--muted); font-size:13px; }
+    @media (max-width:650px) { main { padding:16px 12px 40px; } header { padding:24px 18px; } th, td { padding:10px 9px; font-size:14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Audit technique MEETLY</h1>
+    <p>État de l'application, fonctionnalités visibles, risques techniques et feuille de route de stabilisation.</p>
+    <div class="meta"><span class="pill">Audit du 28 août 2026</span><span class="pill">Expo SDK installé : 54.0.37</span><span class="pill">Production observée : meetly-2.vercel.app</span><span class="pill">Dépôt : merveilmubiayi-web/meetly-chat</span></div>
+  </header>
+
+  <h2>Résumé exécutif</h2>
+  <div class="grid">
+    <div class="card"><div class="metric">Build</div><strong>Export web déjà réussi</strong><p>Expo a généré <code>dist</code> avec les routes statiques principales.</p></div>
+    <div class="card"><div class="metric">18+</div><strong>écrans déclarés</strong><p>Navigation React Navigation couvrant auth, feed, profil, messages, appels et vidéos.</p></div>
+    <div class="card"><div class="metric">P0</div><strong>appels sans token</strong><p>Le fallback de <code>LiveCallScreen</code> marque l'appel comme rejoint alors qu'il est indisponible.</p></div>
+    <div class="card"><div class="metric">0</div><strong>tests automatisés repérés</strong><p>Les parcours critiques doivent encore être couverts par des tests réels.</p></div>
+  </div>
+
+  <div class="note"><strong>Compte de déploiement :</strong> la dernière publication a été faite sur l'organisation Vercel <code>meetly1</code>, projet <code>meetly-2</code>. Le code GitHub a été poussé sur <code>master</code>. Il faut relier le bon compte avant la prochaine publication pour éviter de livrer sur le mauvais espace.</div>
+
+  <h2>Ce qui est fonctionnel ou bien câblé</h2>
+  <table>
+    <thead><tr><th>Domaine</th><th>État</th><th>Preuve dans le projet</th><th>Limite à vérifier</th></tr></thead>
+    <tbody>
+      <tr><td>Export web</td><td><span class="status done">Confirmé</span></td><td><code>npx expo export --platform web</code> a terminé avec les routes <code>/</code>, <code>/_sitemap</code> et <code>/+not-found</code>.</td><td>Le test visuel mobile en production reste à faire.</td></tr>
+      <tr><td>Auth e-mail</td><td><span class="status done">Câblé</span></td><td>Supabase <code>signInWithPassword</code>, inscription, validation e-mail et session.</td><td>La confirmation e-mail et les messages d'erreur doivent être testés avec un vrai projet Supabase.</td></tr>
+      <tr><td>Profils</td><td><span class="status done">Câblé</span></td><td>Lecture/écriture profil, bio, région, avatar et couverture via Cloudinary.</td><td>La migration <code>cover_url</code>, les permissions et les limites de taille doivent être validées en production.</td></tr>
+      <tr><td>Feed, stories, commentaires</td><td><span class="status done">Câblé</span></td><td>Tables Supabase, écoute Realtime, création de posts, commentaires texte/audio et réactions.</td><td>Le feed charge sans pagination ; les gros volumes feront baisser la fluidité.</td></tr>
+      <tr><td>Messagerie</td><td><span class="status done">Câblé</span></td><td>Messages Supabase, Realtime, présence, indicateur de frappe, audio et médias.</td><td>Pas de pagination visible ; les erreurs d'envoi sont seulement journalisées sans restauration du brouillon.</td></tr>
+      <tr><td>Cloudinary</td><td><span class="status risk">Dépendant</span></td><td>Signature protégée par Edge Function avec token utilisateur.</td><td>Secrets, preset signé, MIME et taille maximale doivent être confirmés côté Cloudinary.</td></tr>
+      <tr><td>LiveKit</td><td><span class="status risk">Partiel</span></td><td>Edge Function valide le JWT et produit un token limité à une room.</td><td>L'écran audio/vidéo ne gère pas encore clairement les participants, la caméra, le statut et l'historique d'appel.</td></tr>
+      <tr><td>Barre mobile</td><td><span class="status done">Correctif ajouté</span></td><td><code>GlassIconButton</code> utilise <code>expo-blur</code>, un fond translucide et des symboles monochromes.</td><td>Le rendu natif iOS/Android doit être vérifié sur appareil réel.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Défauts confirmés par lecture du code</h2>
+  <table>
+    <thead><tr><th>Priorité</th><th>Constat</th><th>Fichiers concernés</th><th>Correction attendue</th></tr></thead>
+    <tbody>
+      <tr><td><span class="status critical">P0</span></td><td>Sans token LiveKit, l'utilisateur est placé à tort dans l'état <code>joined</code> après 700 ms.</td><td><code>src/screens/LiveCallScreen.js</code></td><td>Ne jamais faire <code>setJoined(true)</code> dans le fallback ; afficher une erreur et rester hors appel.</td></tr>
+      <tr><td><span class="status critical">P0</span></td><td>Le contrôle Google dépend de la configuration OAuth Supabase et des redirect URLs ; aucune validation automatique n'est présente.</td><td><code>src/screens/LoginScreen.js</code>, <code>RegisterScreen.js</code>, <code>app.json</code></td><td>Enregistrer les URLs web/native, vérifier SHA-1/webClientId Android et tester retour de session sur chaque plateforme.</td></tr>
+      <tr><td><span class="status risk">P1</span></td><td>Le style <code>scrollContainer</code> de l'inscription est défini mais le rendu utilise un <code>View</code> simple.</td><td><code>src/screens/RegisterScreen.js</code></td><td>Utiliser <code>ScrollView</code> avec <code>contentContainerStyle={styles.scrollContainer}</code> et tester clavier/tablette.</td></tr>
+      <tr><td><span class="status risk">P1</span></td><td>Les listes feed, amis, notifications et messages n'ont pas de pagination par curseur.</td><td><code>HomeScreen.js</code>, <code>FriendsScreen.js</code>, <code>ChatListScreen.js</code>, <code>ChatScreen.js</code></td><td>Ajouter <code>created_at,id</code> comme curseur, <code>onEndReached</code>, états loading/error et limite serveur.</td></tr>
+      <tr><td><span class="status risk">P1</span></td><td>Plusieurs actions échouées ne restaurent pas l'état local et n'affichent pas d'erreur utilisateur.</td><td>Commentaires, messages, préférences et follows dans <code>src/screens</code></td><td>Utiliser une mutation optimiste réversible ou recharger la donnée après succès, avec toast/alerte après échec.</td></tr>
+      <tr><td><span class="status risk">P1</span></td><td>La largeur de grille profil est calculée une seule fois depuis <code>Dimensions.get('window')</code>.</td><td><code>src/screens/ProfileScreen.js</code></td><td>Calculer selon la largeur courante, ajouter contraintes tablette et tester rotations/redimensionnement web.</td></tr>
+      <tr><td><span class="status risk">P1</span></td><td>Les symboles emoji colorés restent nombreux dans notifications, actions, drawer, lecteur vidéo et studio.</td><td><code>HomeScreen.js</code>, <code>NotificationScreen.js</code>, <code>CustomDrawerContent.js</code>, <code>TikTokScreen.js</code>, <code>StudioPostScreen.js</code></td><td>Uniformiser avec un composant d'icône monochrome/glass ou une bibliothèque d'icônes ; ne pas mélanger emoji et glyphes.</td></tr>
+      <tr><td><span class="status risk">P1</span></td><td>Le bouton vidéo doit être vérifié : le type existe dans le studio mais le parcours ImagePicker/Cloudinary doit être testé séparément.</td><td><code>StudioPostScreen.js</code>, <code>HomeScreen.js</code></td><td>Utiliser un sélecteur média explicite, contrôler <code>type</code>, MIME, taille et aperçu avant publication.</td></tr>
+      <tr><td><span class="status">P2</span></td><td>La feuille de route demande suppression, modération et autorisation des commentaires, mais aucun workflow d'administration complet n'est identifié dans les écrans parcourus.</td><td><code>supabase_schema.sql</code>, écrans de posts</td><td>Définir rôles/modérateurs, politiques RLS, journal d'action et boutons conditionnels. Tester propriétaire, modérateur et utilisateur normal.</td></tr>
+      <tr><td><span class="status">P2</span></td><td>L'historique des likes est prévu par <code>post_likes</code>, mais le modèle du feed conserve aussi <code>liked_by</code> et <code>likes_count</code>.</td><td><code>supabase_schema.sql</code>, <code>HomeScreen.js</code>, <code>ProfileScreen.js</code></td><td>Choisir <code>post_likes</code> comme source de vérité et synchroniser les compteurs par trigger ou fonction SQL atomique.</td></tr>
+      <tr><td><span class="status">P2</span></td><td>Le changement de thème utilisateur n'est pas branché dans les écrans historiques, majoritairement codés en couleurs fixes sombres.</td><td><code>src/constants/theme.ts</code>, écrans JS, <code>app.json</code></td><td>Créer un ThemeContext persistant, remplacer les couleurs fixes par des tokens et ajouter le choix système/clair/sombre.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Feuille de route étape par étape</h2>
+  <div class="step"><div class="num">1</div><div><h3>Bloquer les erreurs critiques</h3><p>Corriger le faux état d'appel sans token, traiter les erreurs de publication/envoi avec retour UI, puis ajouter un bouton de retry.</p></div></div>
+  <div class="step"><div class="num">2</div><div><h3>Stabiliser les parcours auth</h3><p>Tester inscription longue sur petit écran, confirmation e-mail, mot de passe invalide, Google web, Android et iOS. Configurer les redirect URLs du bon projet Supabase.</p></div></div>
+  <div class="step"><div class="num">3</div><div><h3>Rendre les listes scalables</h3><p>Ajouter pagination curseur et limites pour feed, amis, notifications, conversations, messages et résultats de recherche. Nettoyer les subscriptions dans chaque démontage.</p></div></div>
+  <div class="step"><div class="num">4</div><div><h3>Finaliser médias et gestes</h3><p>Valider vidéo/image avec aperçu et erreurs, ajouter retour lecteur par swipe droite et bouton accueil, puis tester audio/vidéo sur web et mobile.</p></div></div>
+  <div class="step"><div class="num">5</div><div><h3>Unifier les icônes</h3><p>Étendre <code>GlassIconButton</code> aux actions prioritaires, remplacer les emoji colorés, ajouter labels d'accessibilité et vérifier contraste en mode clair et sombre.</p></div></div>
+  <div class="step"><div class="num">6</div><div><h3>Ajouter le thème utilisateur</h3><p>Mettre en place les tokens clair/sombre, persister le choix avec AsyncStorage, respecter le système par défaut et migrer les styles fixes écran par écran.</p></div></div>
+  <div class="step"><div class="num">7</div><div><h3>Sécuriser contenus et SQL</h3><p>Centraliser likes dans <code>post_likes</code>, vérifier RLS conversationnelle, ajouter modération et autorisation commentaires, puis appliquer le schéma via migrations versionnées.</p></div></div>
+  <div class="step"><div class="num">8</div><div><h3>Tester et redéployer le bon compte</h3><p>Créer smoke tests auth/feed/message/media, lancer export web, tester mobile 320/375/768/1024 px, relier le bon Vercel owner, puis déployer et vérifier l'alias production.</p></div></div>
+
+  <h2>Contrôles à exécuter après chaque correctif</h2>
+  <div class="grid">
+    <div class="card"><h3>Web</h3><p>Export Expo sans erreur, ouverture directe des routes, scroll tactile, clavier, responsive 320 à 1024 px.</p></div>
+    <div class="card"><h3>Auth</h3><p>Inscription, confirmation, login, logout, session expirée, Google et retour après redirection.</p></div>
+    <div class="card"><h3>Données</h3><p>Création/suppression, RLS propriétaire/non-propriétaire, Realtime, retry réseau et rechargement après action.</p></div>
+    <div class="card"><h3>Média</h3><p>Permissions, annulation picker, upload signé, limites Cloudinary, lecture audio/vidéo et nettoyage des ressources.</p></div>
+  </div>
+
+  <footer>Rapport généré à partir de l'état local du dépôt, de la configuration Expo/Vercel, du schéma Supabase et d'une lecture des écrans. Les points marqués “à tester” nécessitent un compte de test et un appareil ou navigateur réel ; ils ne sont pas déclarés comme défaillances prouvées.</footer>
+</main>
+</body>
+</html>

@@ -16,6 +16,8 @@ import {
     View
 } from 'react-native';
 import SkeletonLoader from '../components/SkeletonLoader';
+import GlassIconButton from '../components/GlassIconButton';
+import MicrophoneGlyph from '../components/MicrophoneGlyph';
 import { requestLiveKitToken } from '../config/api';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
@@ -274,7 +276,7 @@ export default function ChatScreen({ navigation, route }) {
       const asset = result.assets[0];
       if (!asset.uri) return;
 
-      const mediaUrl = await uploadMediaToCloudinary(asset.uri, 'video', `chat_${chatId}_${currentUser.uid}_${Date.now()}.mp4`);
+      const mediaUrl = await uploadMediaToCloudinary(asset.uri, 'video', `chat_${chatId}_${currentUser.id}_${Date.now()}.mp4`);
       const { error } = await supabase.from('messages').insert({ conversation_id: chatId, sender_id: currentUser.id, media_type: 'video', media_url: mediaUrl, body: 'Vidéo' });
       if (error) throw error;
     } catch (error) {
@@ -318,7 +320,7 @@ export default function ChatScreen({ navigation, route }) {
         <View style={[styles.bubble, isMe ? styles.myBubble : styles.theirBubble]}>
           {mediaType === 'audio' ? (
             <TouchableOpacity style={styles.audioBubble} onPress={() => toggleAudioPlayback(item)}>
-              <Text style={styles.messageText}>{playingMessageId === item.id ? '⏸️ Pause audio' : '🎧 Écouter note vocale'}</Text>
+              <Text style={styles.messageText}>{playingMessageId === item.id ? 'Pause audio' : 'Écouter note vocale'}</Text>
             </TouchableOpacity>
           ) : mediaType === 'video' ? (
             <View style={styles.videoWrapper}>
@@ -370,7 +372,7 @@ export default function ChatScreen({ navigation, route }) {
         Alert.alert('Impossible de démarrer l\'appel', 'Le service d\'appel n\'est pas encore configuré.');
         return;
       }
-      navigation.navigate('LiveCallScreen', { room: roomName, mode, token });
+      navigation.navigate('LiveCallScreen', { room: roomName, conversationId: chatId, mode, token });
     } catch (err) {
       console.error('initiateCall failed', err);
       Alert.alert('Erreur appel', 'Impossible de démarrer l\'appel.');
@@ -396,17 +398,13 @@ export default function ChatScreen({ navigation, route }) {
             {recipientProfile?.name || (recipientProfile?.username ? `@${recipientProfile.username}` : `Membre #${recipientId?.substring(0, 5) || 'user'}`)}
           </Text>
           <Text style={[styles.statusText, (isRecipientOnline || isRecipientTyping) && styles.statusOnline]}>
-            {isRecipientTyping ? '✍️ En train d’écrire...' : isRecipientOnline ? '🟢 En ligne' : 'Vu récemment'}
+            {isRecipientTyping ? 'En train d’écrire...' : isRecipientOnline ? 'En ligne' : 'Vu récemment'}
           </Text>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity style={styles.callHeaderBtn} onPress={() => initiateCall('audio')}>
-            <Text style={styles.callHeaderIcon}>📞</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.callHeaderBtn} onPress={() => initiateCall('video')}>
-            <Text style={styles.callHeaderIcon}>📹</Text>
-          </TouchableOpacity>
+          <GlassIconButton icon="☎" style={styles.callHeaderBtn} onPress={() => initiateCall('audio')} accessibilityLabel="Appel audio" />
+          <GlassIconButton icon="▣" style={styles.callHeaderBtn} onPress={() => initiateCall('video')} accessibilityLabel="Appel vidéo" />
         </View>
       </View>
 
@@ -434,9 +432,7 @@ export default function ChatScreen({ navigation, route }) {
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton} onPress={pickVideoAndSend}>
-            <Text style={styles.attachIcon}>+</Text>
-          </TouchableOpacity>
+          <GlassIconButton icon="+" style={styles.attachButton} onPress={pickVideoAndSend} accessibilityLabel="Joindre une vidéo" />
 
           <TextInput
             style={styles.input}
@@ -448,19 +444,17 @@ export default function ChatScreen({ navigation, route }) {
           />
 
           {inputText.trim().length > 0 ? (
-            <TouchableOpacity style={[styles.actionButton, styles.sendButtonActive]} onPress={handleSendMessage}>
-              <Text style={styles.actionButtonIcon}>✈️</Text>
-            </TouchableOpacity>
+            <GlassIconButton icon="➤" style={[styles.actionButton, styles.sendButtonActive]} onPress={handleSendMessage} accessibilityLabel="Envoyer le message" />
           ) : (
-            <TouchableOpacity
+            <GlassIconButton
+              icon={recording ? '■' : <MicrophoneGlyph color="#ffffff" />}
               style={[styles.actionButton, recording ? styles.recordingButton : null]}
               onPress={async () => {
                 if (!recording) await startRecording();
                 else await stopRecordingAndSend();
               }}
-            >
-              <Text style={styles.actionButtonIcon}>{recording ? '⏹️' : '🎙️'}</Text>
-            </TouchableOpacity>
+              accessibilityLabel={recording ? 'Arrêter l’enregistrement' : 'Enregistrer une note vocale'}
+            />
           )}
         </View>
       </KeyboardAvoidingView>

@@ -18,6 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
+import CommentGlyph from '../components/CommentGlyph';
+import GlassIconBadge from '../components/GlassIconBadge';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
@@ -124,6 +126,14 @@ export default function ProfileScreen() {
   };
 
   const uploadToCloudinaryAndSupabase = async (localUri, field) => {
+    if (!sessionUser?.id) {
+      Alert.alert('Connexion requise', 'Reconnecte-toi avant de modifier ta couverture.');
+      return;
+    }
+    if (!localUri) {
+      Alert.alert('Image invalide', 'Sélectionne une image valide.');
+      return;
+    }
     setUploading(true);
     try {
       const fileName = `${field === 'coverUrl' ? 'cover' : 'avatar'}_${sessionUser.id}_${Date.now()}.jpg`;
@@ -139,7 +149,15 @@ export default function ProfileScreen() {
 
       const { error } = await supabase.from('profiles').upsert({ id: sessionUser.id, ...updateData }, { onConflict: 'id' });
       if (error) throw error;
-      setUserData((prev) => ({ ...prev, ...updateData, photoURL: updateData.avatar_url || prev?.photoURL, coverUrl: updateData.cover_url || prev?.coverUrl }));
+      const { data: refreshedProfile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
+      const nextProfile = refreshedProfile || { ...userData, ...updateData };
+      setUserData({
+        ...nextProfile,
+        displayName: nextProfile.name,
+        username: nextProfile.username?.replace(/^@/, ''),
+        photoURL: nextProfile.avatar_url,
+        coverUrl: nextProfile.cover_url,
+      });
       Alert.alert('Succès', field === 'coverUrl' ? 'Couverture mise à jour !' : 'Photo de profil mise à jour !');
     } catch (error) {
       console.error('Erreur téléversement profil:', error);
@@ -239,7 +257,7 @@ export default function ProfileScreen() {
         <Text style={styles.headerUsername}>@{userData?.username || 'username'}</Text>
         {isOwnProfile ? (
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutIcon}>🚪</Text>
+            <GlassIconBadge icon="↪" size={30} />
           </TouchableOpacity>
         ) : <View style={{ width: 24 }} />}
       </View>
@@ -277,7 +295,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
                 {isOwnProfile && !uploading && (
                   <TouchableOpacity style={styles.cameraBadge} onPress={handleUpdateProfilePicture}>
-                    <Text style={styles.cameraIcon}>📷</Text>
+                    <GlassIconBadge icon="+" color="#ffffff" size={28} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -310,7 +328,7 @@ export default function ProfileScreen() {
               ) : (
                 <>
                   <TouchableOpacity style={[styles.primaryButton, { flex: 1, marginRight: 8 }]}><Text style={styles.primaryButtonText}>Suivre</Text></TouchableOpacity>
-                  <TouchableOpacity style={[styles.primaryButton, { backgroundColor: '#141418', width: 50 }]} onPress={() => navigation.navigate('ChatListScreen')}><Text style={styles.primaryButtonText}>💬</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.primaryButton, { backgroundColor: '#141418', width: 50 }]} onPress={() => navigation.navigate('ChatListScreen')}><GlassIconBadge icon={<CommentGlyph color="#ffffff" />} size={30} /></TouchableOpacity>
                 </>
               )}
             </View>
@@ -357,13 +375,13 @@ export default function ProfileScreen() {
             {/* 5. Filtres sous forme d'onglets personnalisés */}
             <View style={styles.filterTabBar}>
               <TouchableOpacity style={[styles.tabButton, activeTab === 'posts' && styles.activeTabButton]} onPress={() => setActiveTab('posts')}>
-                <Text style={[styles.tabIcon, activeTab === 'posts' && styles.activeTabIcon]}>📲</Text>
+                <GlassIconBadge icon="▦" color={activeTab === 'posts' ? '#ffffff' : '#8a8a9a'} size={34} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.tabButton, activeTab === 'liked' && styles.activeTabButton]} onPress={() => setActiveTab('liked')}>
-                <Text style={[styles.tabIcon, activeTab === 'liked' && styles.activeTabIcon]}>❤️</Text>
+                <GlassIconBadge icon="♥" color={activeTab === 'liked' ? '#ffffff' : '#8a8a9a'} size={34} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.tabButton, activeTab === 'pinned' && styles.activeTabButton]} onPress={() => setActiveTab('pinned')}>
-                <Text style={[styles.tabIcon, activeTab === 'pinned' && styles.activeTabIcon]}>📌</Text>
+                <GlassIconBadge icon="◆" color={activeTab === 'pinned' ? '#ffffff' : '#8a8a9a'} size={34} />
               </TouchableOpacity>
             </View>
 

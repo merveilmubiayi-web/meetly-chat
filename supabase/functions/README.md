@@ -22,3 +22,6 @@ supabase functions deploy cloudinary-signature
 The LiveKit function validates the Supabase bearer token and always uses the authenticated Supabase user ID as the LiveKit identity. The Cloudinary function returns a signed upload payload and scopes the default folder to `meetly/{user_id}`.
 
 Deploy only these Supabase Edge Functions. Keep provider secrets in Supabase and never in the Expo bundle.
+
+
+

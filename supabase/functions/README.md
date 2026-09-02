@@ -23,5 +23,3 @@ The LiveKit function validates the Supabase bearer token and always uses the aut
 
 Deploy only these Supabase Edge Functions. Keep provider secrets in Supabase and never in the Expo bundle.
 
-
-

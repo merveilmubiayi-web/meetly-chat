@@ -17,22 +17,48 @@ export default function LoginScreen({ navigation }) {
     if (routeEmail) setEmail(routeEmail);
   }, [navigation]);
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async ({ testMode = false } = {}) => {
     setLoading(true);
     try {
       const redirectTo = getGoogleRedirectUri();
+      console.log('[Google OAuth test]', { testMode, redirectTo });
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo, skipBrowserRedirect: true },
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
       });
+
       if (error) throw error;
       if (!data?.url) throw new Error('URL Google manquante');
+
+      if (testMode) {
+        Alert.alert('Mode test Google', `Redirect URL:\n${redirectTo}\n\nURL OAuth générée:\n${data.url}`);
+        console.log('[Google OAuth URL]', data.url);
+        setLoading(false);
+        return;
+      }
+
       if (typeof window !== 'undefined') {
         window.location.assign(data.url);
         return;
       }
+
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-      if (result.type === 'success') await completeNativeGoogleSession(result);
+      if (result.type === 'success') {
+        const sessionReady = await completeNativeGoogleSession(result);
+        if (!sessionReady) {
+          Alert.alert('Connexion Google', 'Le retour de Google a été reçu, mais la session n’a pas pu être finalisée.');
+        }
+      } else if (result.type === 'cancel') {
+        Alert.alert('Connexion Google', 'La connexion a été annulée.');
+      }
     } catch (error) {
       console.error('Supabase Google login error', error);
       Alert.alert('Connexion Google impossible', error.message || 'Configure Google dans Supabase Authentication > Providers.');
@@ -109,7 +135,7 @@ export default function LoginScreen({ navigation }) {
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Se connecter</Text>}
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={handleGoogleLogin} disabled={loading}>
+      <TouchableOpacity style={[styles.button, styles.googleButton]} onPress={() => handleGoogleLogin()} disabled={loading}>
         <Text style={styles.googleButtonText}>Se connecter avec Google</Text>
       </TouchableOpacity>
 
@@ -198,6 +224,17 @@ const styles = StyleSheet.create({
     color: '#111',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  testButton: {
+    backgroundColor: '#1f2937',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    marginTop: 12,
+  },
+  testButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
   },
   recentAccounts: {
     marginTop: 24,

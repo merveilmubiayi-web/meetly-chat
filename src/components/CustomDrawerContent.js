@@ -60,7 +60,13 @@ export default function CustomDrawerContent({ navigation }) {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.menuList}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={styles.menuList}
+        contentContainerStyle={styles.menuListContent}
+        scrollEventThrottle={16}
+        decelerationRate="normal"
+      >
         
         {/* 📌 SECTION 1 : COMPTE & PORTEFEUILLE */}
         <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('ProfileScreen')}>
@@ -247,6 +253,10 @@ const styles = StyleSheet.create({
   menuList: {
     flex: 1,
     paddingHorizontal: 12,
+  },
+  menuListContent: {
+    paddingBottom: 28,
+    paddingTop: 8,
   },
   menuItem: {
     flexDirection: 'row',

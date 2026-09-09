@@ -1,6 +1,6 @@
 import { Video } from 'expo-av';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, PanResponder, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Image, PanResponder, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
@@ -38,9 +38,9 @@ export default function StoryViewer({ navigation, route }) {
 
     // animate up, drift horizontally and fade out
     Animated.parallel([
-      Animated.timing(animY, { toValue: -220, duration: 1400 + Math.floor(Math.random() * 400), useNativeDriver: true }),
-      Animated.timing(animX, { toValue: drift, duration: 1400 + Math.floor(Math.random() * 400), useNativeDriver: true }),
-      Animated.timing(animOpacity, { toValue: 0, duration: 1400 + Math.floor(Math.random() * 400), useNativeDriver: true }),
+      Animated.timing(animY, { toValue: -220, duration: 1400 + Math.floor(Math.random() * 400), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(animX, { toValue: drift, duration: 1400 + Math.floor(Math.random() * 400), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(animOpacity, { toValue: 0, duration: 1400 + Math.floor(Math.random() * 400), useNativeDriver: Platform.OS !== 'web' }),
     ]).start(() => {
       // cleanup
       setReactions((prev) => prev.filter((x) => x.id !== id));
@@ -75,12 +75,12 @@ export default function StoryViewer({ navigation, route }) {
         }));
         setStories(list);
         if (startIndex < list.length) setIndex(startIndex);
-      } catch (e) {
-        console.error('Failed to load stories', e);
+      } catch (error) {
+        console.error('Failed to load stories', error);
       }
     };
     fetchStories();
-  }, []);
+  }, [startIndex]);
 
   useEffect(() => {
     // when index changes, update comments listener
@@ -115,6 +115,8 @@ export default function StoryViewer({ navigation, route }) {
       stopProgress();
       stopCommentsListener();
     };
+  // These handlers intentionally use the current story state without restarting the effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, stories, paused]);
 
   const stopCommentsListener = () => {
@@ -132,7 +134,7 @@ export default function StoryViewer({ navigation, route }) {
       try {
         const status = await videoRef.current.getStatusAsync();
         if (status && status.durationMillis) duration = Math.max(1000, Math.floor(status.durationMillis));
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -175,7 +177,7 @@ export default function StoryViewer({ navigation, route }) {
   // Transition animation
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const fadeOutCurrent = (cb) => {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 220, useNativeDriver: Platform.OS !== 'web' }).start(() => {
       fadeAnim.setValue(1);
       cb && cb();
     });

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useThemeStyles } from '../constants/themeStyles';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { supabase } from '../lib/supabase';
 
 export default function SavedPostsScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [savedPosts, setSavedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,13 +32,13 @@ export default function SavedPostsScreen({ navigation }) {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Enregistrements</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Enregistrements</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -47,13 +49,13 @@ export default function SavedPostsScreen({ navigation }) {
           ))}
         </View>
       ) : savedPosts.length === 0 ? (
-        <View style={styles.card}><Text style={styles.title}>Aucun enregistrement</Text><Text style={styles.text}>Sauvegarde des publications depuis le flux principal.</Text></View>
+        <View style={[styles.card, themeStyles.card]}><Text style={[styles.title, themeStyles.text]}>Aucun enregistrement</Text><Text style={[styles.text, themeStyles.secondaryText]}>Sauvegarde des publications depuis le flux principal.</Text></View>
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
           {savedPosts.map((item) => (
-            <View key={item.id} style={styles.card}>
+            <View key={item.id} style={[styles.card, themeStyles.card]}>
               <Text style={styles.author}>{item.postAuthor || 'Auteur'}</Text>
-              <Text style={styles.title}>{item.postCaption || 'Publication sauvegardée'}</Text>
+              <Text style={[styles.title, themeStyles.text]}>{item.postCaption || 'Publication sauvegardée'}</Text>
               {item.postMedia ? <Image source={{ uri: item.postMedia }} style={styles.media} /> : null}
             </View>
           ))}

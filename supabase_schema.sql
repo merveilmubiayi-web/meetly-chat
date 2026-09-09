@@ -334,9 +334,9 @@ create policy "notifications recipient update" on public.notifications for updat
 drop policy if exists "notifications authenticated insert" on public.notifications;
 
 drop policy if exists "conversation member access" on public.conversations;
-create policy "conversation member access" on public.conversations for select to authenticated using (created_by = (select auth.uid()) or public.is_conversation_member(id));
+create policy "conversation member access" on public.conversations for select to authenticated using (created_by = auth.uid() or public.is_conversation_member(id));
 drop policy if exists "conversation creator insert" on public.conversations;
-create policy "conversation creator insert" on public.conversations for insert to authenticated with check (created_by = auth.uid());
+create policy "conversation creator insert" on public.conversations for insert to authenticated with check (created_by = auth.uid() or created_by is null);
 drop policy if exists "conversation member update" on public.conversations;
 create policy "conversation member update" on public.conversations for update to authenticated using (public.is_conversation_admin(id)) with check (public.is_conversation_admin(id));
 
@@ -358,6 +358,8 @@ drop policy if exists "call sessions participant access" on public.call_sessions
 create policy "call sessions participant access" on public.call_sessions for select to authenticated using (initiated_by = auth.uid() or public.is_conversation_member(conversation_id));
 drop policy if exists "call sessions own write" on public.call_sessions;
 create policy "call sessions own write" on public.call_sessions for all to authenticated using (initiated_by = auth.uid()) with check (initiated_by = auth.uid());
+drop policy if exists "call sessions participant update" on public.call_sessions;
+create policy "call sessions participant update" on public.call_sessions for update to authenticated using (public.is_conversation_member(conversation_id)) with check (public.is_conversation_member(conversation_id));
 
 drop policy if exists "support messages own insert" on public.support_messages;
 create policy "support messages own insert" on public.support_messages for insert to authenticated with check (user_id = auth.uid());

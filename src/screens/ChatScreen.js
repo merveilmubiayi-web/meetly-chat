@@ -19,6 +19,7 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import GlassIconButton from '../components/GlassIconButton';
 import MicrophoneGlyph from '../components/MicrophoneGlyph';
 import { requestLiveKitToken } from '../config/api';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
@@ -38,9 +39,9 @@ export default function ChatScreen({ navigation, route }) {
   const [recording, setRecording] = useState(null);
   const [audioSound, setAudioSound] = useState(null);
   const [playingMessageId, setPlayingMessageId] = useState(null);
-  const [isReconnecting, setIsReconnecting] = useState(false);
-  const [waveformHeights, setWaveformHeights] = useState([8, 12, 6, 14, 10, 16]);
-  const [recordDuration, setRecordDuration] = useState(0);
+  const [, setIsReconnecting] = useState(false);
+  const [, setWaveformHeights] = useState([8, 12, 6, 14, 10, 16]);
+  const [, setRecordDuration] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [recipientProfile, setRecipientProfile] = useState(null);
   const [isRecipientTyping, setIsRecipientTyping] = useState(false);
@@ -93,10 +94,57 @@ export default function ChatScreen({ navigation, route }) {
   }, [chatId, currentUser, recipientId]);
 
   useEffect(() => {
+    if (!chatId || !currentUser) return;
+
+    const handleIncomingCall = async (payload) => {
+      const call = payload?.new;
+      if (!call || call.initiated_by === currentUser.id || call.status !== 'started') return;
+
+      Alert.alert(
+        'Appel entrant',
+        `${recipientProfile?.name || 'Votre contact'} vous appelle.`,
+        [
+          {
+            text: 'Refuser',
+            style: 'cancel',
+            onPress: async () => {
+              await supabase.from('call_sessions').update({ status: 'rejected', ended_at: new Date().toISOString() }).eq('id', call.id);
+            },
+          },
+          {
+            text: 'Répondre',
+            onPress: async () => {
+              try {
+                const token = await fetchLiveKitToken(`chat_${chatId}`, currentUser.id);
+                if (!token) throw new Error('Token LiveKit manquant');
+                navigation.navigate('LiveCallScreen', { room: call.room_name, conversationId: chatId, mode: call.call_type, token, callSessionId: call.id, autoJoin: true });
+              } catch (error) {
+                Alert.alert('Appel indisponible', error.message || 'Impossible de rejoindre cet appel.');
+              }
+            },
+          },
+        ],
+      );
+    };
+
+    const channel = supabase.channel(`call-sessions-${chatId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_sessions', filter: `conversation_id=eq.${chatId}` }, handleIncomingCall)
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [chatId, currentUser, navigation, recipientProfile]);
+
+  useEffect(() => {
     if (!chatId) return undefined;
     let active = true;
     const loadMessages = async () => {
-      const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', chatId).is('deleted_at', null).order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', chatId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
+        .limit(50);
       if (error) {
         console.error('Erreur flux messages :', error);
         setLoading(false);
@@ -163,9 +211,10 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const { error } = await supabase.from('messages').insert({ conversation_id: chatId, sender_id: currentUser.id, body: messageText, media_type: 'text' });
       if (error) throw error;
-
     } catch (error) {
       console.error("Erreur lors de l'envoi :", error);
+      setInputText(messageText);
+      Alert.alert('Échec de l’envoi', 'Le message n’a pas pu être envoyé. Vérifie ta connexion.');
     }
   };
 
@@ -291,7 +340,6 @@ export default function ChatScreen({ navigation, route }) {
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
-      const durationMillis = recording.getDurationMillis();
       setRecording(null);
       stopWaveform();
       setRecordDuration(0);
@@ -300,7 +348,7 @@ export default function ChatScreen({ navigation, route }) {
         throw new Error('Impossible de récupérer le fichier audio.');
       }
 
-      const mediaUrl = await uploadMediaToCloudinary(uri, 'auto');
+      const mediaUrl = await uploadMediaToCloudinary(uri, 'audio', `voice_${chatId}_${currentUser.id}_${Date.now()}.m4a`);
       const { error } = await supabase.from('messages').insert({ conversation_id: chatId, sender_id: currentUser.id, media_type: 'audio', media_url: mediaUrl, body: 'Note vocale' });
       if (error) throw error;
     } catch (error) {
@@ -357,8 +405,7 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const response = await requestLiveKitToken(roomName, identity);
       return response?.token || null;
-    } catch (err) {
-      console.error('requestLiveKitToken error', err);
+    } catch {
       return null;
     }
   };
@@ -367,12 +414,21 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const roomName = `chat_${chatId}`;
       const { data: sessionData } = await supabase.auth.getSession();
-      const token = await fetchLiveKitToken(roomName, sessionData.session?.user?.id);
+      const userId = sessionData.session?.user?.id;
+      const token = await fetchLiveKitToken(roomName, userId);
       if (!token) {
         Alert.alert('Impossible de démarrer l\'appel', 'Le service d\'appel n\'est pas encore configuré.');
         return;
       }
-      navigation.navigate('LiveCallScreen', { room: roomName, conversationId: chatId, mode, token });
+      const { data: callSession, error: callError } = await supabase.from('call_sessions').insert({
+        conversation_id: chatId,
+        room_name: roomName,
+        initiated_by: userId,
+        call_type: mode,
+        status: 'started',
+      }).select('id').single();
+      if (callError) throw callError;
+      navigation.navigate('LiveCallScreen', { room: roomName, conversationId: chatId, mode, token, callSessionId: callSession.id, autoJoin: true });
     } catch (err) {
       console.error('initiateCall failed', err);
       Alert.alert('Erreur appel', 'Impossible de démarrer l\'appel.');
@@ -389,7 +445,7 @@ export default function ChatScreen({ navigation, route }) {
         </TouchableOpacity>
         
         <Image
-          source={{ uri: recipientProfile?.avatar_url || 'https://via.placeholder.com/150' }}
+          source={{ uri: getAvatarUri(recipientProfile?.avatar_url, recipientProfile?.name) }}
           style={styles.headerAvatar}
         />
 

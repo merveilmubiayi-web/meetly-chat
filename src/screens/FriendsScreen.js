@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
+  ActivityIndicator,
     FlatList,
     Image,
     StatusBar,
@@ -12,14 +13,21 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 import { useSafeBottomPadding } from '../utils/safeAreaHelpers';
+
+const PAGE_SIZE = 10;
 
 export default function FriendsScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageCursor, setPageCursor] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const pageCursorRef = useRef(null);
 
   const updateUserLocalState = (userId, updates) => {
     setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, ...updates } : user)));
@@ -34,22 +42,56 @@ export default function FriendsScreen({ navigation }) {
     followers: followingIds.includes(profile.id) ? [viewerId] : [],
   }), [currentUser?.id]);
 
-  const fetchDefaultUsers = useCallback(async (userId = currentUser?.id) => {
-    setLoading(true);
+  const fetchUsers = useCallback(async ({ userId = currentUser?.id, query = '', reset = true } = {}) => {
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+
     try {
+      let profilesQuery = supabase
+        .from('profiles')
+        .select('*')
+        .neq('id', userId || '')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(PAGE_SIZE + 1);
+
+      if (query.trim()) {
+        const escapedQuery = query.trim().replace(/[%_,]/g, '');
+        profilesQuery = profilesQuery.or(`username.ilike.%${escapedQuery}%,name.ilike.%${escapedQuery}%`);
+      }
+
+      const cursor = reset ? null : pageCursorRef.current;
+      if (cursor) {
+        profilesQuery = profilesQuery.or(`created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`);
+      }
+
       const [{ data: profiles, error: profileError }, { data: follows, error: followError }] = await Promise.all([
-        supabase.from('profiles').select('*').neq('id', userId || '').limit(10),
+        profilesQuery,
         userId ? supabase.from('follows').select('following_id').eq('follower_id', userId) : Promise.resolve({ data: [], error: null }),
       ]);
       if (profileError || followError) throw profileError || followError;
       const followingIds = (follows || []).map((follow) => follow.following_id);
-      setUsers((profiles || []).map((profile) => mapProfile(profile, followingIds, userId)));
+      const page = profiles || [];
+      const nextUsers = page.slice(0, PAGE_SIZE).map((profile) => mapProfile(profile, followingIds, userId));
+      setUsers((previous) => reset ? nextUsers : [...previous, ...nextUsers]);
+      setHasMore(page.length > PAGE_SIZE);
+      const nextCursor = page.length > PAGE_SIZE ? page[PAGE_SIZE - 1] : page[page.length - 1] || null;
+      pageCursorRef.current = nextCursor;
+      setPageCursor(nextCursor);
     } catch (error) {
       console.error("Erreur utilisateurs par défaut :", error);
     } finally {
-      setLoading(false);
+      if (reset) setLoading(false);
+      else setLoadingMore(false);
     }
   }, [currentUser?.id, mapProfile]);
+
+  const fetchDefaultUsers = useCallback((userId = currentUser?.id) => {
+    pageCursorRef.current = null;
+    setPageCursor(null);
+    setHasMore(true);
+    return fetchUsers({ userId, reset: true });
+  }, [currentUser?.id, fetchUsers]);
 
   // Charge quelques membres par défaut à l'ouverture de la page
   useEffect(() => {
@@ -64,21 +106,14 @@ export default function FriendsScreen({ navigation }) {
   // Logique de recherche dynamique par nom ou username
   const handleSearch = async (text) => {
     setSearchQuery(text);
-    if (text.trim() === '') {
-      fetchDefaultUsers();
-      return;
-    }
+    setPageCursor(null);
+    setHasMore(true);
+    fetchUsers({ query: text, reset: true });
+  };
 
-    setLoading(true);
-    try {
-      const { data: profiles, error } = await supabase.from('profiles').select('*').or(`username.ilike.%${text.trim()}%,name.ilike.%${text.trim()}%`).neq('id', currentUser?.id || '').limit(20);
-      if (error) throw error;
-      const { data: follows } = await supabase.from('follows').select('following_id').eq('follower_id', currentUser?.id || '');
-      setUsers((profiles || []).map((profile) => mapProfile(profile, (follows || []).map((follow) => follow.following_id), currentUser?.id)));
-    } catch (error) {
-      console.error("Erreur recherche :", error);
-    } finally {
-      setLoading(false);
+  const handleLoadMore = () => {
+    if (!loading && !loadingMore && hasMore && pageCursor) {
+      fetchUsers({ query: searchQuery, reset: false });
     }
   };
 
@@ -96,9 +131,15 @@ export default function FriendsScreen({ navigation }) {
         conversationId = shared?.conversation_id || null;
       }
       if (!conversationId) {
-        const { data: conversation, error: conversationError } = await supabase.from('conversations').insert({ created_by: currentUser.id, is_group: false }).select().single();
+        const { data: conversation, error: conversationError } = await supabase
+          .from('conversations')
+          .insert({ created_by: currentUser.id, is_group: false })
+          .select('id')
+          .single();
         if (conversationError) throw conversationError;
-        conversationId = conversation.id;
+        conversationId = conversation?.id;
+        if (!conversationId) throw new Error('Identifiant de conversation manquant');
+
         const { error: memberError } = await supabase.from('conversation_members').insert([
           { conversation_id: conversationId, user_id: currentUser.id, role: 'admin' },
           { conversation_id: conversationId, user_id: targetUser.id, role: 'member' },
@@ -108,7 +149,7 @@ export default function FriendsScreen({ navigation }) {
       navigation.push('ChatRoom', { chatId: conversationId, recipientId: targetUser.id });
     } catch (error) {
       console.error('Erreur initiation chat :', error);
-      Alert.alert('Erreur', 'Impossible de démarrer la discussion.');
+      Alert.alert('Erreur', error.message || 'Impossible de démarrer la discussion.');
     } finally {
       setLoading(false);
     }
@@ -140,8 +181,8 @@ export default function FriendsScreen({ navigation }) {
 
     return (
       <View style={styles.userCard}>
-        <Image 
-          source={{ uri: item.photoURL || 'https://via.placeholder.com/150' }} 
+        <Image
+          source={{ uri: getAvatarUri(item.photoURL, item.displayName) }}
           style={styles.avatar} 
         />
         <View style={styles.userInfo}>
@@ -212,6 +253,9 @@ export default function FriendsScreen({ navigation }) {
           style={styles.list}
           contentContainerStyle={[styles.listContainer, bottomPadding]}
           showsVerticalScrollIndicator={false}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color="#a613c4" style={styles.listFooter} /> : null}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>Aucun membre trouvé sous ce nom. 🔍</Text>
@@ -275,6 +319,9 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  listFooter: {
+    paddingVertical: 12,
   },
   skeletonFriendRow: { width: '94%', height: 90, borderRadius: 18, backgroundColor: '#141418', marginBottom: 14 },
   skeletonRowMargin: { marginTop: 12 },

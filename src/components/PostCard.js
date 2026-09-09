@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Image, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 
 export default function PostCard({ post, onComment, onOpenProfile }) {
@@ -63,7 +64,7 @@ export default function PostCard({ post, onComment, onOpenProfile }) {
   return (
     <View style={styles.card}>
       <TouchableOpacity style={styles.authorRow} onPress={() => onOpenProfile?.(post.author_id)}>
-        <Image source={{ uri: post.author_avatar || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+        <Image source={{ uri: getAvatarUri(post.author_avatar, post.author_name) }} style={styles.avatar} />
         <View><Text style={styles.author}>{post.author_name || 'Utilisateur'}</Text><Text style={styles.date}>{new Date(post.created_at).toLocaleDateString()}</Text></View>
       </TouchableOpacity>
       {post.caption ? <Text style={styles.caption}>{post.caption}</Text> : null}

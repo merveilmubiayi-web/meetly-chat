@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { getAvatarUri } from '../constants/assets';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 const formatChatTime = (dateStr) => {
@@ -30,6 +32,7 @@ const formatChatTime = (dateStr) => {
 };
 
 export default function ChatListScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [chats, setChats] = useState([]);
   const [userProfiles, setUserProfiles] = useState({});
   const [loading, setLoading] = useState(true);
@@ -98,23 +101,23 @@ export default function ChatListScreen({ navigation }) {
     const otherParticipantId = item.participants.find(id => id !== currentUser?.id);
     const recipient = userProfiles[otherParticipantId];
     const displayName = recipient?.displayName || `Membre #${otherParticipantId?.substring(0, 5) || 'user'}`;
-    const avatarUri = recipient?.photoURL || 'https://via.placeholder.com/150/a613c4/ffffff?text=User';
+    const avatarUri = getAvatarUri(recipient?.photoURL, displayName);
     const timeText = formatChatTime(item.updatedAt);
     const isMe = item.lastMessageSender === currentUser?.id;
 
     return (
       <TouchableOpacity 
-        style={styles.chatRow} 
+        style={[styles.chatRow, { borderColor: themeStyles.theme.border }]} 
         onPress={() => navigation.navigate('ChatRoom', { chatId: item.id, recipientId: otherParticipantId })}
       >
         <Image source={{ uri: avatarUri }} style={styles.avatar} />
 
         <View style={styles.chatInfo}>
           <View style={styles.chatHeaderRow}>
-            <Text style={styles.username}>{displayName}</Text>
-            <Text style={styles.time}>{timeText}</Text>
+            <Text style={[styles.username, themeStyles.text]}>{displayName}</Text>
+            <Text style={[styles.time, themeStyles.mutedText]}>{timeText}</Text>
           </View>
-          <Text style={[styles.lastMessage, isMe && styles.myLastMessage]} numberOfLines={1}>
+          <Text style={[styles.lastMessage, themeStyles.secondaryText, isMe && styles.myLastMessage]} numberOfLines={1}>
             {isMe ? 'Vous : ' : ''}{item.lastMessage}
           </Text>
         </View>
@@ -123,15 +126,15 @@ export default function ChatListScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
       
-      <View style={styles.header}>
+      <View style={[styles.header, themeStyles.header]}>
         {/* 💡 Remplacement par router.back() */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Discussions</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Discussions</Text>
         <View style={{ width: 24 }} />
       </View>
 

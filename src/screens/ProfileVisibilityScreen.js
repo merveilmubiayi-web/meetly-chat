@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 export default function ProfileVisibilityScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(true);
 
@@ -28,28 +30,28 @@ export default function ProfileVisibilityScreen({ navigation }) {
       const { error } = await supabase.from('profiles').upsert({ id: userData.user.id, is_public: value }, { onConflict: 'id' });
       if (error) throw error;
       setIsPublic(value);
-    } catch (error) {
+    } catch {
       Alert.alert('Erreur', 'Impossible de modifier la visibilité du profil.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Visibilité du profil</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Visibilité du profil</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Contrôle de visibilité</Text>
-        <Text style={styles.text}>Choisis si votre profil est visible par les autres membres de Meetly.</Text>
+      <View style={[styles.card, themeStyles.card]}>
+        <Text style={[styles.title, themeStyles.text]}>Contrôle de visibilité</Text>
+        <Text style={[styles.text, themeStyles.secondaryText]}>Choisis si votre profil est visible par les autres membres de Meetly.</Text>
         <View style={styles.row}>
-          <Text style={styles.optionText}>{isPublic ? 'Profil public' : 'Profil privé'}</Text>
-          <Switch value={isPublic} onValueChange={handleToggle} trackColor={{ false: '#444', true: '#a613c4' }} thumbColor="#fff" disabled={loading} />
+          <Text style={[styles.optionText, themeStyles.text]}>{isPublic ? 'Profil public' : 'Profil privé'}</Text>
+          <Switch value={isPublic} onValueChange={handleToggle} trackColor={{ false: themeStyles.theme.border, true: themeStyles.theme.accent }} thumbColor={themeStyles.theme.surface} disabled={loading} />
         </View>
       </View>
     </SafeAreaView>

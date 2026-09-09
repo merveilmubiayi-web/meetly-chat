@@ -13,12 +13,12 @@ import {
     View
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useThemeStyles } from '../constants/themeStyles';
 
 export default function AccountSettingsScreen({ navigation, route }) {
+  const themeStyles = useThemeStyles();
   const routeSection = route.params?.section || 'email';
   const [activeSection, setActiveSection] = useState(routeSection);
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [region, setRegion] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -41,12 +41,11 @@ export default function AccountSettingsScreen({ navigation, route }) {
     const loadSettings = async () => {
       const { data: userDataResult } = await supabase.auth.getUser();
       const currentUser = userDataResult.user;
-      if (!currentUser) { setLoading(false); return; }
+      if (!currentUser) return;
       const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
       if (!active) return;
       if (error) console.warn('Account settings load failed:', error.message);
       const profile = data || {};
-      setUserData(profile);
       setEmail(currentUser.email || '');
       setRegion(profile.region || '');
       setAlgorithmPreferences(profile.algorithm_preferences || {
@@ -60,7 +59,6 @@ export default function AccountSettingsScreen({ navigation, route }) {
         newFollowers: true,
         liveFriends: true,
       });
-      setLoading(false);
     };
     loadSettings();
     return () => { active = false; };
@@ -171,8 +169,8 @@ export default function AccountSettingsScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
+    <SafeAreaView style={[styles.safeArea, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}

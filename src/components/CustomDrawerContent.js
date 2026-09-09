@@ -10,7 +10,21 @@ import {
     View
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { getAvatarUri } from '../constants/assets';
 import GlassIconBadge from './GlassIconBadge';
+import {
+  CoinsIcon,
+  VerifiedIcon,
+  ShieldIcon,
+  BookmarkIcon,
+  SettingsIcon,
+  TrashIcon,
+  LogoutIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
+  EyeIcon,
+  SparklesIcon,
+} from './icons';
 
 export default function CustomDrawerContent({ navigation }) {
   const [openSection, setOpenSection] = useState(null);
@@ -47,9 +61,9 @@ export default function CustomDrawerContent({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       {/* 👤 HEADER PROFILE (Section 1) */}
-      <View style={styles.profileHeader}>
+      <View style={styles.profileHeader}> 
         <Image 
-          source={{ uri: userData?.photoURL || 'https://via.placeholder.com/150' }} 
+          source={{ uri: getAvatarUri(userData?.photoURL, userData?.displayName) }}
           style={styles.avatar} 
         />
         <View style={styles.profileInfo}>
@@ -70,24 +84,24 @@ export default function CustomDrawerContent({ navigation }) {
         
         {/* 📌 SECTION 1 : COMPTE & PORTEFEUILLE */}
         <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('ProfileScreen')}>
-          <GlassIconBadge icon="$" size={32} />
+          <GlassIconBadge icon={<CoinsIcon size={18} color="#ffffff" />} size={34} />
           <Text style={styles.menuLabel}>Portefeuille (Meetly Coins)</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Certifications')}>
-          <GlassIconBadge icon="◆" size={32} />
+          <GlassIconBadge icon={<VerifiedIcon size={18} color="#a613c4" />} size={34} />
           <Text style={styles.menuLabel}>Demander le Badge Bleu</Text>
         </TouchableOpacity>
 
         {/* 🔒 SECTION 2 : CONFIDENTIALITÉ & SÉCURITÉ */}
         <TouchableOpacity style={styles.dropdownHeader} onPress={() => toggleSection('privacy')}>
-          <GlassIconBadge icon="◇" size={32} />
+          <GlassIconBadge icon={<ShieldIcon size={18} color="#ffffff" />} size={34} />
           <Text style={styles.menuLabel}>Confidentialité & Sécurité</Text>
-          <Text style={styles.arrowIcon}>{openSection === 'privacy' ? '▼' : '►'}</Text>
+          {openSection === 'privacy' ? <ChevronDownIcon size={16} color="#8a8a9a" /> : <ChevronRightIcon size={16} color="#8a8a9a" />}
         </TouchableOpacity>
         
         {openSection === 'privacy' && (
-          <View style={styles.dropdownChild}>
+          <View style={styles.dropdownChild}> 
             <View style={styles.subMenuItemRow}>
               <Text style={styles.subMenuLabel}>Mode Fantôme (Invisible)</Text>
               <Switch 
@@ -107,13 +121,13 @@ export default function CustomDrawerContent({ navigation }) {
 
         {/* 📝 SECTION 3 : GÉRER LES PUBLICATIONS & LIKES */}
         <TouchableOpacity style={styles.dropdownHeader} onPress={() => toggleSection('posts')}>
-          <GlassIconBadge icon="▦" size={32} />
+          <GlassIconBadge icon={<BookmarkIcon size={18} color="#ffffff" />} size={34} />
           <Text style={styles.menuLabel}>Gestion du Contenu</Text>
-          <Text style={styles.arrowIcon}>{openSection === 'posts' ? '▼' : '►'}</Text>
+          {openSection === 'posts' ? <ChevronDownIcon size={16} color="#8a8a9a" /> : <ChevronRightIcon size={16} color="#8a8a9a" />}
         </TouchableOpacity>
 
         {openSection === 'posts' && (
-          <View style={styles.dropdownChild}>
+          <View style={styles.dropdownChild}> 
             <TouchableOpacity style={styles.subMenuItem}>
               <Text style={styles.subMenuLabel}>Suppression / Modération</Text>
             </TouchableOpacity>
@@ -121,23 +135,23 @@ export default function CustomDrawerContent({ navigation }) {
               <Text style={styles.subMenuLabel}>Autorisations des Commentaires</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.subMenuItem} onPress={() => navigation.navigate('SavedPosts')}>
-              <Text style={styles.subMenuLabel}>Enregistrements (Signets) 🔖</Text>
+              <Text style={styles.subMenuLabel}>Enregistrements (Signets)</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.subMenuItem}>
-              <Text style={styles.subMenuLabel}>Historique des Likes ❤️</Text>
+              <Text style={styles.subMenuLabel}>Historique des Likes</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* ⚙️ SECTION 4 & 5 : PARAMÈTRES & CONFIG COMPTE */}
         <TouchableOpacity style={styles.dropdownHeader} onPress={() => toggleSection('settings')}>
-          <GlassIconBadge icon="⚙" size={32} />
+          <GlassIconBadge icon={<SettingsIcon size={18} color="#ffffff" />} size={34} />
           <Text style={styles.menuLabel}>Paramètres du Compte</Text>
-          <Text style={styles.arrowIcon}>{openSection === 'settings' ? '▼' : '►'}</Text>
+          {openSection === 'settings' ? <ChevronDownIcon size={16} color="#8a8a9a" /> : <ChevronRightIcon size={16} color="#8a8a9a" />}
         </TouchableOpacity>
 
         {openSection === 'settings' && (
-          <View style={styles.dropdownChild}>
+          <View style={styles.dropdownChild}> 
             <TouchableOpacity style={styles.subMenuItem} onPress={() => navigation.navigate('AccountSettingsScreen', { section: 'email' })}>
               <Text style={styles.subMenuLabel}>Email et Région / Pays</Text>
             </TouchableOpacity>
@@ -155,13 +169,13 @@ export default function CustomDrawerContent({ navigation }) {
 
         {/* 🚀 SECTION 6 & 7 : OPTIMISATION & PERFORMANCE */}
         <TouchableOpacity style={styles.menuItem}>
-          <GlassIconBadge icon="⌫" size={32} />
+          <GlassIconBadge icon={<TrashIcon size={18} color="#8a8a9a" />} size={34} />
           <Text style={styles.menuLabel}>Libérer de l&apos;espace (Cache)</Text>
         </TouchableOpacity>
 
-        <View style={styles.menuItemRow}>
+        <View style={styles.menuItemRow}> 
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <GlassIconBadge icon="↘" size={32} />
+            <GlassIconBadge icon={<EyeIcon size={18} color="#ffffff" />} size={34} />
             <Text style={styles.menuLabel}>Économiseur de données</Text>
           </View>
           <Switch 
@@ -173,13 +187,13 @@ export default function CustomDrawerContent({ navigation }) {
 
         {/* 🔒 SECTION 8 : CENTRE DE CONFIDENTIALITÉ */}
         <TouchableOpacity style={styles.dropdownHeader} onPress={() => toggleSection('privacyCenter')}>
-          <GlassIconBadge icon="◉" size={32} />
+          <GlassIconBadge icon={<SparklesIcon size={18} color="#ffffff" />} size={34} />
           <Text style={styles.menuLabel}>Centre de confidentialité</Text>
-          <Text style={styles.arrowIcon}>{openSection === 'privacyCenter' ? '▼' : '►'}</Text>
+          {openSection === 'privacyCenter' ? <ChevronDownIcon size={16} color="#8a8a9a" /> : <ChevronRightIcon size={16} color="#8a8a9a" />}
         </TouchableOpacity>
 
         {openSection === 'privacyCenter' && (
-          <View style={styles.privacyCard}>
+          <View style={styles.privacyCard}> 
             <Text style={styles.privacyTitle}>Meetly protège ta vie privée 👇</Text>
             <Text style={styles.privacyText}>
               Chez Meetly, ta vie privée est une priorité absolue. Que nous introduisions de nouvelles fonctionnalités ou que nous améliorions les produits que tu aimes, nous veillons à sécuriser tes données.
@@ -189,20 +203,14 @@ export default function CustomDrawerContent({ navigation }) {
 
         <View style={styles.divider} />
 
-        {/* 🔄 SECTION 9 : CHANGER DE COMPTE */}
-        <TouchableOpacity style={styles.menuItem}>
-          <GlassIconBadge icon="↻" size={32} />
-          <Text style={styles.menuLabel}>Changer de compte</Text>
-        </TouchableOpacity>
-
-        {/* 🚪 SECTION 10 : SUPPORT & LOGOUT */}
+        {/* 🔄 SECTION 9 : CHANGER DE COMPTE & DÉCONNEXION */}
         <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('HelpScreen')}>
-          <GlassIconBadge icon="?" size={32} />
+          <GlassIconBadge icon={<ShieldIcon size={18} color="#8a8a9a" />} size={34} />
           <Text style={styles.menuLabel}>Centre d&apos;aide / Signaler</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.menuItem, { marginBottom: 40 }]} onPress={handleLogout}>
-          <GlassIconBadge icon="↪" size={32} />
+          <GlassIconBadge icon={<LogoutIcon size={18} color="#ff3b30" />} size={34} />
           <Text style={[styles.menuLabel, styles.logoutText]}>Déconnexion</Text>
         </TouchableOpacity>
 

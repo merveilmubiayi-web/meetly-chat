@@ -3,10 +3,12 @@ import { useState } from 'react';
 import { Alert, Image, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { requestLiveKitToken } from '../config/api';
 import GlassIconBadge from '../components/GlassIconBadge';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
 export default function StudioPostScreen({ navigation, route }) {
+  const themeStyles = useThemeStyles();
   const [caption, setCaption] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -118,45 +120,66 @@ export default function StudioPostScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
       
-      <View style={styles.header}>
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isStory ? 'Créer une story' : contentType ? 'Créer une publication' : 'Nouveau contenu'}</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>{isStory ? 'Créer une story' : contentType ? 'Créer une publication' : 'Nouveau contenu'}</Text>
         <View style={{ width: 24 }} />
       </View>
 
       {!contentType ? (
-        <View style={styles.card}>
-          <Text style={styles.label}>Choisir le type</Text>
+        <View style={[styles.card, themeStyles.card]}>
+          <Text style={[styles.label, themeStyles.text]}>Choisir le type</Text>
           {[['image', '▧', 'Image'], ['text', 'T', 'Texte'], ['video', '▶', 'Vidéo'], ['story', '○', 'Story'], ['live', '●', 'Live']].map(([type, icon, label]) => (
             <TouchableOpacity key={type} style={styles.optionButton} onPress={() => selectType(type)}>
-              <GlassIconBadge icon={icon} size={34} /><Text style={styles.optionText}>{label}</Text>
+              <GlassIconBadge icon={icon} size={34} /><Text style={[styles.optionText, themeStyles.text]}>{label}</Text>
             </TouchableOpacity>
           ))}
         </View>
-      ) : <View style={styles.card}>
-        <Text style={styles.label}>{isStory ? 'Image de la story' : isVideo ? 'Vidéo' : 'Légende'}</Text>
+      ) : <View style={[styles.card, themeStyles.card]}>
+        <Text style={[styles.label, themeStyles.text]}>{isStory ? 'Image de la story' : isVideo ? 'Vidéo' : 'Légende'}</Text>
         <TextInput
-          style={styles.input}
-          placeholder={isVideo ? 'Légende de la vidéo...' : 'Exprime ton moment...'}
-          placeholderTextColor="#8a8a9a"
+          style={[styles.input, themeStyles.input]}
+          placeholder={isVideo ? 'Légende de la vidéo...' : isStory ? 'Ajoute une légende (optionnel)...' : 'Exprime ton moment...'}
+          placeholderTextColor={themeStyles.theme.textSecondary}
           value={caption}
           onChangeText={setCaption}
           multiline
           maxLength={220}
         />
-        <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
-          <Text style={styles.uploadButtonText}>{selectedImage ? 'Changer l’image' : 'Ajouter une image'}</Text>
-        </TouchableOpacity>
+        
+        {contentType !== 'text' || selectedImage ? (
+          <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
+            <Text style={styles.uploadButtonText}>
+              {selectedImage
+                ? (isVideo ? 'Changer la vidéo' : 'Changer l’image')
+                : (isVideo ? 'Sélectionner une vidéo' : 'Ajouter une image')}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
-        {selectedImage ? <Image source={{ uri: selectedImage }} style={styles.previewImage} /> : null}
+        {selectedImage ? (
+          <View style={styles.previewContainer}>
+            {isVideo ? (
+              <View style={styles.videoPreviewBox}>
+                <Text style={styles.videoIcon}>▶</Text>
+                <Text style={styles.videoSelectedText}>Vidéo sélectionnée</Text>
+              </View>
+            ) : (
+              <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+            )}
+            <TouchableOpacity style={styles.removeMediaButton} onPress={() => setSelectedImage(null)}>
+              <Text style={styles.removeMediaText}>✕ Retirer</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <TouchableOpacity style={styles.publishButton} onPress={handlePublish} disabled={uploading}>
-          <Text style={styles.publishButtonText}>{uploading ? 'Publication...' : isStory ? 'Publier la story' : 'Publier'}</Text>
+          <Text style={styles.publishButtonText}>{uploading ? 'Publication en cours...' : isStory ? 'Publier la story' : 'Publier'}</Text>
         </TouchableOpacity>
       </View>}
     </SafeAreaView>
@@ -174,7 +197,13 @@ const styles = StyleSheet.create({
   helper: { color: '#8a8a9a', marginTop: 10, lineHeight: 18 },
   uploadButton: { marginTop: 12, backgroundColor: '#141418', borderWidth: 1, borderColor: '#a613c4', borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
   uploadButtonText: { color: '#fff', fontWeight: '700' },
-  previewImage: { width: '100%', height: 180, borderRadius: 12, marginTop: 12 },
+  previewContainer: { position: 'relative', marginTop: 12 },
+  previewImage: { width: '100%', height: 180, borderRadius: 12 },
+  videoPreviewBox: { width: '100%', height: 140, borderRadius: 12, backgroundColor: '#1f1f28', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  videoIcon: { fontSize: 32, color: '#a613c4', marginBottom: 6 },
+  videoSelectedText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  removeMediaButton: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  removeMediaText: { color: '#ef4444', fontWeight: '700', fontSize: 12 },
   publishButton: { marginTop: 16, backgroundColor: '#a613c4', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   publishButtonText: { color: '#fff', fontWeight: '700' },
   optionButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0c', borderRadius: 12, padding: 16, marginTop: 10 },

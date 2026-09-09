@@ -2,9 +2,11 @@ import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
 import { completeNativeGoogleSession, getGoogleRedirectUri } from '../config/auth';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 export default function RegisterScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -133,19 +135,19 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.scrollContainer}
+      contentContainerStyle={[styles.scrollContainer, themeStyles.screen]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
-      style={styles.container}
+      style={[styles.container, themeStyles.screen]}
     >
-      <Text style={styles.title}>Rejoins Meetly ✨</Text>
+      <Text style={[styles.title, themeStyles.text]}>Rejoins Meetly ✨</Text>
 
-      <TextInput style={styles.input} placeholder="Nom complet" placeholderTextColor="#8a8a9a" value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder="Nom d'utilisateur" placeholderTextColor="#8a8a9a" value={username} onChangeText={setUsername} autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="Adresse e-mail" placeholderTextColor="#8a8a9a" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="Numéro de téléphone (optionnel)" placeholderTextColor="#8a8a9a" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#8a8a9a" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="Confirmer le mot de passe" placeholderTextColor="#8a8a9a" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry autoCapitalize="none" />
+      <TextInput style={[styles.input, themeStyles.input]} placeholder="Nom complet" placeholderTextColor={themeStyles.theme.textSecondary} value={name} onChangeText={setName} />
+      <TextInput style={[styles.input, themeStyles.input]} placeholder="Nom d'utilisateur" placeholderTextColor={themeStyles.theme.textSecondary} value={username} onChangeText={setUsername} autoCapitalize="none" />
+      <TextInput style={[styles.input, themeStyles.input]} placeholder="Adresse e-mail" placeholderTextColor={themeStyles.theme.textSecondary} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+      <TextInput style={[styles.input, themeStyles.input]} placeholder="Numéro de téléphone (optionnel)" placeholderTextColor={themeStyles.theme.textSecondary} value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" autoCapitalize="none" />
+      <TextInput style={[styles.input, themeStyles.input]} placeholder="Mot de passe" placeholderTextColor={themeStyles.theme.textSecondary} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
+      <TextInput style={[styles.input, themeStyles.input]} placeholder="Confirmer le mot de passe" placeholderTextColor={themeStyles.theme.textSecondary} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry autoCapitalize="none" />
 
       <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Créer mon compte</Text>}
@@ -167,6 +169,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingVertical: 32,
+    paddingHorizontal: 24,
   },
   container: {
     backgroundColor: '#0a0a0c',

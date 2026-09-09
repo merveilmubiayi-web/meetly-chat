@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Image, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 import { useSafeBottomPadding } from '../utils/safeAreaHelpers';
 
@@ -137,9 +138,15 @@ export default function SearchResultsScreen({ navigation, route }) {
         conversationId = shared?.conversation_id || null;
       }
       if (!conversationId) {
-        const { data: conversation, error: conversationError } = await supabase.from('conversations').insert({ created_by: currentUser.id, is_group: false }).select().single();
+        const { data: conversation, error: conversationError } = await supabase
+          .from('conversations')
+          .insert({ created_by: currentUser.id, is_group: false })
+          .select('id')
+          .single();
         if (conversationError) throw conversationError;
-        conversationId = conversation.id;
+        conversationId = conversation?.id;
+        if (!conversationId) throw new Error('Identifiant de conversation manquant');
+
         const { error: membersError } = await supabase.from('conversation_members').insert([
           { conversation_id: conversationId, user_id: currentUser.id, role: 'admin' },
           { conversation_id: conversationId, user_id: targetUserId, role: 'member' },
@@ -149,7 +156,7 @@ export default function SearchResultsScreen({ navigation, route }) {
       navigation.navigate('ChatRoom', { chatId: conversationId, recipientId: targetUserId });
     } catch (error) {
       console.error('Erreur démarrage discussion:', error);
-      Alert.alert('Erreur', 'Impossible de démarrer la discussion.');
+      Alert.alert('Erreur', error.message || 'Impossible de démarrer la discussion.');
     } finally {
       setActionLoadingId(null);
     }
@@ -163,7 +170,7 @@ export default function SearchResultsScreen({ navigation, route }) {
       return (
         <View style={styles.resultRow}>
           <TouchableOpacity style={styles.personIdentity} onPress={() => navigation.navigate('ProfileScreen', { userId: item.personId })}>
-            <Image source={{ uri: item.avatar || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+            <Image source={{ uri: getAvatarUri(item.avatar, item.name) }} style={styles.avatar} />
             <View style={styles.resultInfo}>
               <Text style={styles.resultTitle}>{item.name}</Text>
               <Text style={styles.resultSubtitle}>{item.subtitle}</Text>

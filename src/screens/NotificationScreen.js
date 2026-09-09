@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import GlassIconBadge from '../components/GlassIconBadge';
 import CommentGlyph from '../components/CommentGlyph';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 const getNotificationDetails = (type) => {
@@ -39,6 +40,7 @@ const formatNotificationTime = (dateStr) => {
 };
 
 export default function NotificationScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -56,7 +58,8 @@ export default function NotificationScreen({ navigation }) {
         .from('notifications')
         .select('*')
         .eq('recipient_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(40);
 
       if (!active) return;
       if (error) console.warn('Notifications Supabase failed:', error.message);
@@ -87,7 +90,7 @@ export default function NotificationScreen({ navigation }) {
 
     return (
       <TouchableOpacity
-        style={[styles.card, isUnread && styles.cardUnread]}
+        style={[styles.card, themeStyles.card, isUnread && styles.cardUnread]}
         onPress={() => markAsRead(item)}
         activeOpacity={0.8}
       >
@@ -96,9 +99,9 @@ export default function NotificationScreen({ navigation }) {
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <Text style={[styles.title, { color: details.color }]}>{details.label}</Text>
-            <Text style={styles.time}>{formatNotificationTime(item.created_at)}</Text>
+            <Text style={[styles.time, themeStyles.mutedText]}>{formatNotificationTime(item.created_at)}</Text>
           </View>
-          <Text style={styles.messageText}>{item.message}</Text>
+          <Text style={[styles.messageText, themeStyles.text]}>{item.message}</Text>
         </View>
 
         {isUnread && <View style={styles.unreadDot} />}
@@ -107,13 +110,13 @@ export default function NotificationScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Notifications</Text>
         {items.some((n) => !n.read_at) ? (
           <TouchableOpacity onPress={markAllAsRead}>
             <Text style={styles.markAllText}>Tout lire</Text>
@@ -139,8 +142,8 @@ export default function NotificationScreen({ navigation }) {
           ListEmptyComponent={
             <View style={styles.emptyCard}>
               <GlassIconBadge icon="🔔" color="#a613c4" size={56} style={styles.emptyIcon} />
-              <Text style={styles.emptyTitle}>Aucune notification</Text>
-              <Text style={styles.emptySubtitle}>Les nouvelles activités (likes, commentaires, messages) apparaîtront ici.</Text>
+              <Text style={[styles.emptyTitle, themeStyles.text]}>Aucune notification</Text>
+              <Text style={[styles.emptySubtitle, themeStyles.secondaryText]}>Les nouvelles activités (likes, commentaires, messages) apparaîtront ici.</Text>
             </View>
           }
         />

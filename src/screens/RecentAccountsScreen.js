@@ -1,10 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { getAvatarUri } from '../constants/assets';
+import { useThemeStyles } from '../constants/themeStyles';
 
 const RECENT_ACCOUNTS_KEY = '@meetly/recent-accounts';
 
 export default function RecentAccountsScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,29 +29,29 @@ export default function RecentAccountsScreen({ navigation }) {
   }, [loadAccounts, navigation]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, themeStyles.screen]}>
       <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
-      <Text style={styles.title}>Bienvenue sur Meetly</Text>
-      <Text style={styles.subtitle}>Choisis un compte pour continuer</Text>
+      <Text style={[styles.title, themeStyles.text]}>Bienvenue sur Meetly</Text>
+      <Text style={[styles.subtitle, themeStyles.secondaryText]}>Choisis un compte pour continuer</Text>
 
       {loading ? <ActivityIndicator color="#a613c4" /> : accounts.length ? (
         <View style={styles.accountList}>
           {accounts.map((account) => (
             <TouchableOpacity
               key={account.email}
-              style={styles.accountRow}
+              style={[styles.accountRow, themeStyles.card]}
               onPress={() => navigation.navigate('LoginScreen', { email: account.email })}
             >
-              <Image source={{ uri: account.avatarUrl || 'https://via.placeholder.com/80' }} style={styles.avatar} />
+              <Image source={{ uri: getAvatarUri(account.avatarUrl, account.name) }} style={styles.avatar} />
               <View style={styles.accountInfo}>
-                <Text style={styles.accountName}>{account.name}</Text>
-                <Text style={styles.accountEmail}>{account.email}</Text>
+                <Text style={[styles.accountName, themeStyles.text]}>{account.name}</Text>
+                <Text style={[styles.accountEmail, themeStyles.secondaryText]}>{account.email}</Text>
               </View>
               <Text style={styles.arrow}>›</Text>
             </TouchableOpacity>
           ))}
         </View>
-      ) : <Text style={styles.empty}>Aucun compte récemment utilisé</Text>}
+      ) : <Text style={[styles.empty, themeStyles.secondaryText]}>Aucun compte récemment utilisé</Text>}
 
       <View style={styles.actions}>
         <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Register')}>

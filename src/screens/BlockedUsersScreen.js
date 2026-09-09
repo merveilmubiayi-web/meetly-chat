@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { useThemeStyles } from '../constants/themeStyles';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 
 export default function BlockedUsersScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,13 +55,13 @@ export default function BlockedUsersScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Utilisateurs bloqués</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Utilisateurs bloqués</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -76,7 +80,7 @@ export default function BlockedUsersScreen({ navigation }) {
         <View style={styles.list}>
           {blockedUsers.map((user) => (
             <View key={user.id} style={styles.userRow}>
-              <Image source={{ uri: user.photoURL || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+              <Image source={{ uri: getAvatarUri(user.photoURL, user.displayName) }} style={styles.avatar} />
               <View style={styles.userInfo}>
                 <Text style={styles.displayName}>{user.displayName || 'Utilisateur'}</Text>
                 <Text style={styles.username}>{user.username || '@user'}</Text>

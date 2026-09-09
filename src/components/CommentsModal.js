@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 
 export default function CommentsModal({ visible, post, onClose }) {
@@ -12,7 +13,17 @@ export default function CommentsModal({ visible, post, onClose }) {
     let active = true;
     const load = async () => {
       const { data, error } = await supabase.from('comments').select('id, body, created_at, author_id, reply_to_id').eq('post_id', post.id).order('created_at', { ascending: true });
-      if (active && !error) setComments(data || []);
+      if (!active || error) return;
+      const authorIds = [...new Set((data || []).map((c) => c.author_id))];
+      const { data: profiles } = authorIds.length
+        ? await supabase.from('profiles').select('id, name, username, avatar_url').in('id', authorIds)
+        : { data: [] };
+      const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+      setComments((data || []).map((c) => ({
+        ...c,
+        authorName: profileMap[c.author_id]?.name || profileMap[c.author_id]?.username || 'Membre',
+        authorAvatar: profileMap[c.author_id]?.avatar_url || null,
+      })));
     };
     load();
     const channel = supabase.channel(`comments-modal-${post.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${post.id}` }, load).subscribe();
@@ -48,11 +59,14 @@ export default function CommentsModal({ visible, post, onClose }) {
         <ScrollView style={styles.list}>{comments.map((comment) => {
           const isReply = Boolean(comment.reply_to_id);
           return <View key={comment.id} style={[styles.comment, isReply && styles.reply]}>
-            <Text style={styles.author}>{comment.author_id}</Text>
+            <View style={styles.authorRow}>
+              <Image source={{ uri: getAvatarUri(comment.authorAvatar, comment.authorName) }} style={styles.commentAvatar} />
+              <Text style={styles.author}>{comment.authorName}</Text>
+            </View>
             <Text style={styles.body}>{comment.body}</Text>
             <View style={styles.commentFooter}>
               <Text style={styles.date}>{new Date(comment.created_at).toLocaleString()}</Text>
-              <TouchableOpacity onPress={() => setReplyTo({ id: comment.id, authorName: comment.author_id })}>
+              <TouchableOpacity onPress={() => setReplyTo({ id: comment.id, authorName: comment.authorName })}>
                 <Text style={styles.replyAction}>Répondre</Text>
               </TouchableOpacity>
             </View>
@@ -73,10 +87,12 @@ const styles = StyleSheet.create({
   close: { color: '#c56be0' },
   list: { minHeight: 160 },
   comment: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#25252e' },
+  authorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  commentAvatar: { width: 24, height: 24, borderRadius: 12, marginRight: 8, backgroundColor: '#20202a' },
   reply: { marginLeft: 22, borderLeftWidth: 2, borderLeftColor: '#a613c4', paddingLeft: 10 },
-  author: { color: '#c56be0', fontWeight: '700', fontSize: 12 },
-  body: { color: '#fff', marginTop: 4 },
-  date: { color: '#777783', fontSize: 11, marginTop: 4 },
+  author: { color: '#c56be0', fontWeight: '700', fontSize: 13 },
+  body: { color: '#fff', marginTop: 2, marginLeft: 32 },
+  date: { color: '#777783', fontSize: 11, marginTop: 4, marginLeft: 32 },
   commentFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   replyAction: { color: '#c56be0', fontSize: 11, fontWeight: '700' },
   replyBanner: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#20202a', padding: 8, borderRadius: 8, marginTop: 8 },

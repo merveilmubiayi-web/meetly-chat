@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet } from 'react-native';
+import { Animated, Platform, StyleSheet } from 'react-native';
 
 export default function SkeletonLoader({ style, children, speed = 900 }) {
   const opacity = useRef(new Animated.Value(0.35)).current;
@@ -10,12 +10,12 @@ export default function SkeletonLoader({ style, children, speed = 900 }) {
         Animated.timing(opacity, {
           toValue: 0.75,
           duration: speed,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(opacity, {
           toValue: 0.35,
           duration: speed,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
       ])
     );

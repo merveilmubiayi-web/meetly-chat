@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "meetly-neuf",
+    "name": "Meetly",
     "slug": "meetly-neuf",
+    "description": "Meetly est une application sociale qui combine messagerie, publications visuelles, stories et live vidéo pour construire des communautés actives.",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -12,8 +13,10 @@
       "bundleIdentifier": "com.meetly.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "Cette application a besoin d'accéder à la caméra pour vos appels vidéo.",
-        "NSMicrophoneUsageDescription": "Cette application a besoin d'accéder au microphone pour vos appels audio et vidéo."
+        "NSCameraUsageDescription": "Cette application a besoin d'accéder à la caméra pour vos appels vidéo et vos publications.",
+        "NSMicrophoneUsageDescription": "Cette application a besoin d'accéder au microphone pour vos appels audio et vidéo.",
+        "NSPhotoLibraryUsageDescription": "Cette application a besoin d'accéder à vos photos pour publier des images et des médias.",
+        "NSPhotoLibraryAddUsageDescription": "Cette application a besoin de sauvegarder des médias dans votre bibliothèque photo."
       }
     },
     "android": {
@@ -25,20 +28,27 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.meetly.app",
+      "versionCode": 2,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
-        "MODIFY_AUDIO_SETTINGS"
-      ]
+        "MODIFY_AUDIO_SETTINGS",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "INTERNET"
+      ],
+      "allowBackup": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-splash-screen",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-audio",
+      "expo-video"
     ],
     "extra": {
       "eas": {

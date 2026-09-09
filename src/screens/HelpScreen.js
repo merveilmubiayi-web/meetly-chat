@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 export default function HelpScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -20,7 +22,7 @@ export default function HelpScreen({ navigation }) {
       if (error) throw error;
       Alert.alert('Message envoyé', 'Votre demande a bien été transmise à l’équipe Meetly.');
       setMessage('');
-    } catch (error) {
+    } catch {
       Alert.alert('Erreur', 'Le message n’a pas pu être envoyé.');
     } finally {
       setSending(false);
@@ -28,20 +30,20 @@ export default function HelpScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Centre d&apos;aide</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Centre d&apos;aide</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Besoin d&apos;aide ?</Text>
-        <Text style={styles.text}>Décrivez votre problème et l’équipe Meetly vous répondra rapidement.</Text>
-        <TextInput style={styles.input} multiline placeholder="Écrivez ici votre demande..." placeholderTextColor="#8a8a9a" value={message} onChangeText={setMessage} />
+      <View style={[styles.card, themeStyles.card]}>
+        <Text style={[styles.title, themeStyles.text]}>Besoin d&apos;aide ?</Text>
+        <Text style={[styles.text, themeStyles.secondaryText]}>Décrivez votre problème et l’équipe Meetly vous répondra rapidement.</Text>
+        <TextInput style={[styles.input, themeStyles.input]} multiline placeholder="Écrivez ici votre demande..." placeholderTextColor={themeStyles.theme.textSecondary} value={message} onChangeText={setMessage} />
         <TouchableOpacity style={styles.button} onPress={handleSend} disabled={sending}>
           <Text style={styles.buttonText}>{sending ? 'Envoi...' : 'Envoyer'}</Text>
         </TouchableOpacity>

@@ -1,18 +1,25 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GlassIconButton from './GlassIconButton';
+import {
+  HomeIcon,
+  FriendsIcon,
+  PlusButtonIcon,
+  MessagesIcon,
+  BellIcon,
+} from './icons';
 
-export default function BottomTabBar({ navigation, activeTab, onPlusPress }) {
+export default function BottomTabBar({ navigation, activeTab, onPlusPress, unreadMessages = 0, unreadNotifs = 0 }) {
   const insets = useSafeAreaInsets();
 
-  const renderTab = (key, label, icon, onPress) => {
+  const renderTab = (key, label, IconComponent, onPress, badgeCount = 0) => {
     const isActive = activeTab === key;
 
     return (
       <GlassIconButton
         key={key}
-        icon={icon}
+        icon={<IconComponent size={22} color={isActive ? '#ffffff' : '#8a8a9a'} filled={isActive} />}
         label={label}
         active={isActive}
         onPress={onPress}
@@ -21,18 +28,24 @@ export default function BottomTabBar({ navigation, activeTab, onPlusPress }) {
   };
 
   return (
-    <View style={[styles.bottomTabBar, { height: 64 + insets.bottom, paddingBottom: 10 + insets.bottom }]}> 
-      {renderTab('HomeScreen', 'Accueil', '⌂', () => navigation.replace('HomeScreen'))}
-      {renderTab('FriendsScreen', 'Amis', '♧', () => navigation.navigate('FriendsScreen'))}
+    <View style={[
+      styles.bottomTabBar,
+      {
+        height: 64 + insets.bottom,
+        paddingBottom: 10 + insets.bottom,
+        backgroundColor: '#0a0a0c',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+      }
+    ]}> 
+      {renderTab('HomeScreen', 'Accueil', HomeIcon, () => navigation.replace('HomeScreen'))}
+      {renderTab('FriendsScreen', 'Amis', FriendsIcon, () => navigation.navigate('FriendsScreen'))}
 
       <TouchableOpacity style={styles.tabItemPlus} onPress={onPlusPress} activeOpacity={0.85}>
-        <View style={styles.plusCircle}>
-          <Text style={styles.plusIconText}>+</Text>
-        </View>
+        <PlusButtonIcon size={42} variant="gradient" />
       </TouchableOpacity>
 
-      {renderTab('ChatListScreen', 'Message', '□', () => navigation.navigate('ChatListScreen'))}
-      {renderTab('NotificationScreen', 'Notifs', '!', () => navigation.navigate('NotificationScreen'))}
+      {renderTab('ChatListScreen', 'Message', MessagesIcon, () => navigation.navigate('ChatListScreen'), unreadMessages)}
+      {renderTab('NotificationScreen', 'Notifs', BellIcon, () => navigation.navigate('NotificationScreen'), unreadNotifs)}
     </View>
   );
 }
@@ -40,20 +53,17 @@ export default function BottomTabBar({ navigation, activeTab, onPlusPress }) {
 const styles = StyleSheet.create({
   bottomTabBar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(10, 10, 12, 0.98)',
     alignSelf: 'stretch',
     width: '100%',
     zIndex: 1,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
     paddingBottom: 10,
     paddingTop: 8,
     height: 64,
     justifyContent: 'space-around',
     alignItems: 'center',
-    boxShadow: '0px -4px 12px rgba(0, 0, 0, 0.3)',
     elevation: 10,
   },
   tabItemPlus: {

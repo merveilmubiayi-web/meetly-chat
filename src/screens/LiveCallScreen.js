@@ -7,15 +7,13 @@ import MicrophoneGlyph from '../components/MicrophoneGlyph';
 import { livekitConfig } from '../config/livekit';
 import { supabase } from '../lib/supabase';
 
-// LiveCallScreen: minimal in-call UI with permission, mute and hangup controls.
-// Full LiveKit integration is left as TODO: when you have a backend token and
-// the LiveKit client SDK installed, use the `route.params.token` to connect.
-
 export default function LiveCallScreen({ navigation, route }) {
   const roomParam = route?.params?.room || '';
   const conversationId = route?.params?.conversationId || null;
   const mode = route?.params?.mode || 'audio';
   const providedToken = route?.params?.token || null;
+  const callSessionId = route?.params?.callSessionId || null;
+  const autoJoin = route?.params?.autoJoin === true;
 
   const [roomName] = useState(roomParam || `meetly-${Math.floor(Math.random() * 9000 + 1000)}`);
   const [joined, setJoined] = useState(false);
@@ -23,6 +21,8 @@ export default function LiveCallScreen({ navigation, route }) {
   const [connecting, setConnecting] = useState(false);
   const roomRef = useRef(null);
   const callSessionIdRef = useRef(null);
+  const disconnectedHandlerRef = useRef(null);
+  const handleJoinRef = useRef(null);
 
   const closeCallSession = async (status = 'ended') => {
     const sessionId = callSessionIdRef.current;
@@ -41,6 +41,7 @@ export default function LiveCallScreen({ navigation, route }) {
       try {
         const r = roomRef.current;
         if (r) {
+          if (disconnectedHandlerRef.current) r.off(RoomEvent.Disconnected, disconnectedHandlerRef.current);
           r.disconnect().catch(() => {});
           roomRef.current = null;
         }
@@ -102,19 +103,26 @@ export default function LiveCallScreen({ navigation, route }) {
         console.warn('enable microphone failed', trackErr);
       }
 
-      room.on(RoomEvent.Disconnected, () => {
+      const handleDisconnected = () => {
         setJoined(false);
         closeCallSession();
-      });
+      };
+      disconnectedHandlerRef.current = handleDisconnected;
+      room.once(RoomEvent.Disconnected, handleDisconnected);
 
-      const { data: session } = await supabase.from('call_sessions').insert({
-        conversation_id: conversationId,
-        room_name: roomName,
-        initiated_by: room.localParticipant.identity,
-        call_type: mode === 'video' ? 'video' : 'audio',
-        status: 'started',
-      }).select('id').single();
-      callSessionIdRef.current = session?.id || null;
+      if (callSessionId) {
+        callSessionIdRef.current = callSessionId;
+      } else {
+        const { data: session, error: sessionError } = await supabase.from('call_sessions').insert({
+          conversation_id: conversationId,
+          room_name: roomName,
+          initiated_by: room.localParticipant.identity,
+          call_type: mode === 'video' ? 'video' : 'audio',
+          status: 'started',
+        }).select('id').single();
+        if (sessionError) throw sessionError;
+        callSessionIdRef.current = session?.id || null;
+      }
       setJoined(true);
     } catch (err) {
       console.error('LiveKit connect failed', err);
@@ -124,10 +132,17 @@ export default function LiveCallScreen({ navigation, route }) {
     }
   };
 
+  handleJoinRef.current = handleJoin;
+
+  useEffect(() => {
+    if (autoJoin && providedToken) handleJoinRef.current();
+  }, [autoJoin, providedToken]);
+
   const handleHangup = () => {
     try {
       const r = roomRef.current;
       if (r) {
+        if (disconnectedHandlerRef.current) r.off(RoomEvent.Disconnected, disconnectedHandlerRef.current);
         r.disconnect().catch(() => {});
         roomRef.current = null;
       }

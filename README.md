@@ -1,56 +1,79 @@
-# Welcome to your Expo app 👋
+# Meetly
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Meetly est une application mobile sociale pensée pour connecter des utilisateurs autour de contenus visuels, de discussions, de stories et de live vidéo. Le produit combine une expérience de feed social, des notifications, des messages privés, des groupes, des profils personnalisables et des sessions live en temps réel.
 
-## Get started
+## Ce que l’application propose
 
-1. Install dependencies
+- Feed social avec publications, réactions et commentaires
+- Stories à durée limitée
+- Messagerie directe et groupes
+- Profil utilisateur et gestion de visibilité
+- Live vidéo et salle de diffusion
+- Authentification bancaire / moderne via Supabase
+- Intégration Cloudinary pour le stockage des médias
 
-   ```bash
-   npm install
-   ```
+## Stack technique
 
-2. Start the app
+- React Native + Expo
+- Supabase pour l’authentification, la base de données et les edge functions
+- LiveKit pour les appels et le streaming en direct
+- Cloudinary pour le stockage des médias
+- Expo AV, Image Picker et Web Browser pour l’expérience mobile
 
-   ```bash
-   npx expo start
-   ```
+## Prérequis
 
-In the output, you'll find options to open the app in a
+- Node.js 18 ou supérieur
+- npm ou yarn
+- Expo CLI
+- Un projet Supabase configuré
+- Une configuration LiveKit active
+- Un compte Cloudinary pour les médias
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Installation
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Démarrage local
 
-### Other setup steps
+```bash
+npx expo start
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Pour Android :
 
-## Learn more
+```bash
+npx expo run:android
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Vérifications avant publication
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run lint
+```
 
-## Join the community
+Pour la publication via EAS :
 
-Join our community of developers creating universal apps.
+```bash
+npx eas build --platform android --profile preview
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Checklist de publication
+
+- Vérifier les permissions demandées
+- Valider le design sur plusieurs tailles d’écran
+- Tester le parcours d’inscription et de connexion
+- Vérifier les flux de messagerie et de live
+- Ajouter une politique de confidentialité accessible
+- Préparer les screenshots, icône et description
+- Vérifier la stabilité de l’application sur les tests manuels
+
+## Documentation associée
+
+- [docs/google-play-prep.md](docs/google-play-prep.md)
+- [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+
+## À savoir
+
+Ce dépôt est prêt pour un environnement de développement et de build mobile, avec une base solide pour une mise en production plus méthodique et un passage vers la publication app store.

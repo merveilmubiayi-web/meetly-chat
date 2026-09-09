@@ -1,4 +1,3 @@
-import { BlurView } from 'expo-blur';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function GlassIconButton({
@@ -10,6 +9,17 @@ export default function GlassIconButton({
   accessibilityLabel,
   style,
 }) {
+  const palette = {
+    background: 'rgba(20, 20, 24, 0.85)',
+    border: 'rgba(255, 255, 255, 0.08)',
+    activeBackground: 'rgba(166, 19, 196, 0.25)',
+    activeBorder: '#a613c4',
+    icon: '#c6c6ce',
+    iconActive: '#ffffff',
+    label: '#8a8a9a',
+    labelActive: '#ffffff',
+  };
+
   return (
     <TouchableOpacity
       accessibilityLabel={accessibilityLabel || label}
@@ -17,14 +27,17 @@ export default function GlassIconButton({
       activeOpacity={0.8}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={[styles.button, style]}
+      style={[
+        styles.button,
+        { backgroundColor: palette.background, borderColor: palette.border },
+        active && { backgroundColor: palette.activeBackground, borderColor: palette.activeBorder },
+        style,
+      ]}
     >
-      <BlurView intensity={active ? 42 : 28} tint="dark" style={styles.blur}>
-        <View style={[styles.content, active && styles.contentActive]}>
-          {typeof icon === 'string' ? <Text style={[styles.icon, active && styles.iconActive]}>{icon}</Text> : icon}
-          {!!label && <Text style={[styles.label, active && styles.labelActive]}>{label}</Text>}
-        </View>
-      </BlurView>
+      <View style={styles.content}>
+        {typeof icon === 'string' ? <Text style={[styles.icon, { color: active ? palette.iconActive : palette.icon }]}>{icon}</Text> : icon}
+        {!!label && <Text style={[styles.label, { color: active ? palette.labelActive : palette.label }]}>{label}</Text>}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -33,40 +46,23 @@ const styles = StyleSheet.create({
   button: {
     width: 58,
     height: 50,
-    borderRadius: 16,
-    overflow: 'hidden',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  blur: {
-    flex: 1,
+    overflow: 'hidden',
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  contentActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
   },
   icon: {
-    color: 'rgba(255, 255, 255, 0.72)',
     fontSize: 22,
     lineHeight: 24,
-    fontWeight: '500',
-  },
-  iconActive: {
-    color: '#ffffff',
-    fontWeight: '700',
+    fontWeight: '600',
   },
   label: {
-    color: 'rgba(255, 255, 255, 0.65)',
     fontSize: 9,
     fontWeight: '600',
     marginTop: 1,
-  },
-  labelActive: {
-    color: '#ffffff',
   },
 });

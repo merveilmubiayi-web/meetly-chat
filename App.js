@@ -1,7 +1,9 @@
-import { Platform, LogBox } from 'react-native';
+import { Component } from 'react';
+import { Button, Platform, LogBox, StyleSheet, Text, View } from 'react-native';
 import 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { ThemeProvider } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 // Register LiveKit react-native globals once at app startup on native platforms.
@@ -22,12 +24,57 @@ LogBox.ignoreLogs([
   'Warning:', // Masque les petits avertissements de structure si nécessaire
 ]);
 
+class AppErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Application render error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Meetly ne peut pas charger cet écran.</Text>
+          <Text style={styles.errorMessage}>Réessaie pour relancer l’affichage.</Text>
+          {!!this.state.error?.message && (
+            <Text selectable style={styles.errorDetails}>{this.state.error.message}</Text>
+          )}
+          <Button title="Réessayer" onPress={() => this.setState({ hasError: false })} />
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <AppErrorBoundary>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppNavigator />
+          </AuthProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </AppErrorBoundary>
   );
 }
+
+const styles = StyleSheet.create({
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0a0a0c',
+    padding: 24,
+  },
+  errorTitle: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
+  errorMessage: { color: '#b0b0b8', fontSize: 14, textAlign: 'center', marginBottom: 18 },
+});

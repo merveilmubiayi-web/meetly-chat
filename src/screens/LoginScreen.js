@@ -3,9 +3,11 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { completeNativeGoogleSession, getGoogleRedirectUri } from '../config/auth';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 export default function LoginScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const initialEmail = navigation?.getState?.()?.routes?.find((route) => route.name === 'LoginScreen')?.params?.email || '';
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
@@ -104,17 +106,17 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, themeStyles.screen]}>
       <View style={styles.logoContainer}>
         <Image source={require('../../assets/images/logo.png')} style={styles.logoIcon} />
-        <Text style={styles.logoText}>MEETLY</Text>
+        <Text style={[styles.logoText, themeStyles.text]}>MEETLY</Text>
       </View>
-      <Text style={styles.subtitle}>Connecte-toi pour interagir avec tes proches ✨</Text>
+      <Text style={[styles.subtitle, themeStyles.secondaryText]}>Connecte-toi pour interagir avec tes proches ✨</Text>
 
       <TextInput 
-        style={styles.input} 
+        style={[styles.input, themeStyles.input]} 
         placeholder="Adresse e-mail" 
-        placeholderTextColor="#8a8a9a" 
+        placeholderTextColor={themeStyles.theme.textSecondary} 
         value={email} 
         onChangeText={setEmail} 
         keyboardType="email-address"
@@ -122,9 +124,9 @@ export default function LoginScreen({ navigation }) {
       />
 
       <TextInput 
-        style={styles.input} 
+        style={[styles.input, themeStyles.input]} 
         placeholder="Mot de passe" 
-        placeholderTextColor="#8a8a9a" 
+        placeholderTextColor={themeStyles.theme.textSecondary} 
         value={password} 
         onChangeText={setPassword} 
         secureTextEntry
@@ -140,7 +142,7 @@ export default function LoginScreen({ navigation }) {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.linkContainer} onPress={() => navigateTo('Register')}>
-        <Text style={styles.linkText}>Nouveau sur Meetly ? <Text style={styles.linkHighlight}>Crée ton compte</Text></Text>
+        <Text style={[styles.linkText, themeStyles.secondaryText]}>Nouveau sur Meetly ? <Text style={styles.linkHighlight}>Crée ton compte</Text></Text>
       </TouchableOpacity>
 
     </View>

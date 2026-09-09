@@ -1,6 +1,7 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS, RecordingOptionsPresets } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Animated,
@@ -22,12 +23,22 @@ import {
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import CustomDrawerContent from '../components/CustomDrawerContent';
-import CommentGlyph from '../components/CommentGlyph';
 import GlassIconButton from '../components/GlassIconButton';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { getAvatarUri } from '../constants/assets';
 import { requestLiveKitToken } from '../config/api';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
+import {
+  MenuIcon,
+  SearchIcon,
+  HeartIcon,
+  CommentIcon,
+  ShareIcon,
+  BookmarkIcon,
+  CloseIcon,
+  PlusButtonIcon,
+} from '../components/icons';
 
 const toDateValue = (value) => {
   if (!value) return null;
@@ -45,7 +56,8 @@ const toDateValue = (value) => {
 const isStoryVisible = (value) => {
   const createdAt = toDateValue(value);
   if (!createdAt) return false;
-  return Date.now() - createdAt.getTime() <= 24 * 60 * 60 * 1000;
+  const diffHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+  return diffHours <= 24;
 };
 
 const formatRelativeTime = (value) => {
@@ -106,10 +118,12 @@ export default function HomeScreen({ navigation }) {
   const commentsListenerRef = useRef(null);
   const modalRecordingInterval = useRef(null);
 
-  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [showCreateMenu] = useState(false);
   const createAnim = useRef(new Animated.Value(0)).current;
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const drawerAnim = useRef(new Animated.Value(-320)).current;
@@ -123,6 +137,12 @@ export default function HomeScreen({ navigation }) {
     if (!trimmed) return;
     navigation.navigate('SearchResults', { query: trimmed });
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      setReloadKey((value) => value + 1);
+    }, [])
+  );
 
   useEffect(() => {
     return () => {
@@ -373,7 +393,7 @@ export default function HomeScreen({ navigation }) {
       const [profileResult, savedResult, likesResult] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', currentUserId).maybeSingle(),
         supabase.from('saved_posts').select('post_id').eq('user_id', currentUserId),
-        supabase.from('post_likes').select('post_id, reaction').eq('user_id', currentUserId),
+        supabase.from('post_likes').select('*').eq('user_id', currentUserId),
       ]);
       if (!active) return;
       if (profileResult.error || savedResult.error) {
@@ -396,47 +416,63 @@ export default function HomeScreen({ navigation }) {
   }, [currentUserId]);
 
   // Récupération des posts et des stories depuis Supabase
+  const loadFeed = useCallback(async () => {
+    const [storiesResult, postsResult] = await Promise.all([
+      supabase.from('stories').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('posts').select('*').eq('is_story', false).order('created_at', { ascending: false }).limit(30),
+    ]);
+
+    if (storiesResult.error || postsResult.error) {
+      console.warn('Supabase feed failed:', storiesResult.error?.message || postsResult.error?.message);
+      setError('Les tables Supabase posts/stories doivent être créées.');
+      setLoading(false);
+      return;
+    }
+
+    const mapPost = (item) => ({
+      ...item,
+      authorId: item.author_id,
+      authorName: item.author_name || 'Meetly User',
+      authorAvatar: item.author_avatar,
+      mediaUrl: item.media_url,
+      likesCount: item.likes_count || 0,
+      likedBy: Array.isArray(item.liked_by) ? item.liked_by : [],
+      commentsCount: item.comments_count || (Array.isArray(item.latest_comments) ? item.latest_comments.length : 0),
+      createdAt: item.created_at,
+      latestComments: Array.isArray(item.latest_comments) ? item.latest_comments : [],
+    });
+
+    const postsList = (postsResult.data || []).map(mapPost).filter((item) => ['text', 'image', 'video'].includes(item.type));
+    const storiesList = (storiesResult.data || []).map(mapPost).filter((item) => isStoryVisible(item.createdAt));
+
+    setStories(storiesList);
+    setPosts(postsList);
+    setCommentsByPost(Object.fromEntries(postsList.map((item) => [item.id, item.latestComments || []])));
+    setLoading(false);
+    setError(null);
+  }, []);
+
   useEffect(() => {
     let active = true;
-    const loadFeed = async () => {
-      const [storiesResult, postsResult] = await Promise.all([
-        supabase.from('stories').select('*').order('created_at', { ascending: false }).limit(50),
-        supabase.from('posts').select('*').eq('is_story', false).order('created_at', { ascending: false }).limit(30),
-      ]);
-      if (!active) return;
-      if (storiesResult.error || postsResult.error) {
-        console.warn('Supabase feed failed:', storiesResult.error?.message || postsResult.error?.message);
-        setError('Les tables Supabase posts/stories doivent être créées.');
-        setLoading(false);
-        return;
+    const fetchFeed = async () => {
+      setLoading(true);
+      try {
+        await loadFeed();
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
-      const mapPost = (item) => ({
-        ...item,
-        authorId: item.author_id,
-        authorName: item.author_name || 'Meetly User',
-        authorAvatar: item.author_avatar,
-        mediaUrl: item.media_url,
-        likesCount: item.likes_count || 0,
-        likedBy: Array.isArray(item.liked_by) ? item.liked_by : [],
-        commentsCount: item.comments_count || (Array.isArray(item.latest_comments) ? item.latest_comments.length : 0),
-        createdAt: item.created_at,
-        latestComments: Array.isArray(item.latest_comments) ? item.latest_comments : [],
-      });
-      const postsList = postsResult.data.map(mapPost).filter((item) => ['text', 'image', 'video'].includes(item.type));
-      const storiesList = storiesResult.data.map(mapPost).filter((item) => isStoryVisible(item.createdAt));
-      setStories(storiesList);
-      setPosts(postsList);
-      setCommentsByPost(Object.fromEntries(postsList.map((item) => [item.id, item.latestComments || []])));
-      setLoading(false);
-      setError(null);
     };
-    loadFeed();
-    const channel = supabase.channel(`feed-${reloadKey}`).on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, loadFeed).subscribe();
+
+    fetchFeed();
+    const channel = supabase.channel(`feed-${reloadKey}`).on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, fetchFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, fetchFeed).subscribe();
+
     return () => {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [reloadKey]);
+  }, [reloadKey, loadFeed]);
 
   // Sélection d'une réaction multiple (Facebook-like)
   const handleSelectReaction = async (post, reactionKey = 'love') => {
@@ -529,14 +565,109 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Copier le lien
-  const handleCopyPostLink = async (postId) => {
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMorePosts || posts.length === 0) return;
+    const lastPost = posts[posts.length - 1];
+    if (!lastPost?.createdAt) return;
+
+    setLoadingMore(true);
     try {
-      const postLink = `https://meetly.app/posts/${postId}`;
-      await Clipboard.setStringAsync(postLink);
-      Alert.alert('Lien copié !', 'Le lien de la publication a été copié.');
-    } catch (error) {
-      console.error('Erreur lors de la copie du lien:', error);
+      const { data, error: fetchErr } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('is_story', false)
+        .lt('created_at', lastPost.createdAt)
+        .order('created_at', { ascending: false })
+        .limit(15);
+
+      if (fetchErr) throw fetchErr;
+      if (!data || data.length === 0) {
+        setHasMorePosts(false);
+      } else {
+        const mapPost = (item) => ({
+          ...item,
+          authorId: item.author_id,
+          authorName: item.author_name || 'Meetly User',
+          authorAvatar: item.author_avatar,
+          mediaUrl: item.media_url,
+          likesCount: item.likes_count || 0,
+          likedBy: Array.isArray(item.liked_by) ? item.liked_by : [],
+          commentsCount: item.comments_count || (Array.isArray(item.latest_comments) ? item.latest_comments.length : 0),
+          createdAt: item.created_at,
+          latestComments: Array.isArray(item.latest_comments) ? item.latest_comments : [],
+        });
+        const newPosts = data.map(mapPost).filter((item) => ['text', 'image', 'video'].includes(item.type));
+        if (newPosts.length < 15) setHasMorePosts(false);
+        setPosts((prev) => [...prev, ...newPosts]);
+      }
+    } catch (err) {
+      console.warn('Erreur chargement posts supplémentaires:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const handlePostOptions = (post) => {
+    const isOwner = post.authorId === currentUserId;
+    if (isOwner) {
+      Alert.alert(
+        'Options de publication',
+        'Que souhaites-tu faire ?',
+        [
+          {
+            text: 'Supprimer la publication',
+            style: 'destructive',
+            onPress: () => confirmDeletePost(post.id),
+          },
+          {
+            text: 'Copier le texte',
+            onPress: () => {
+              if (post.caption) Clipboard.setStringAsync(post.caption);
+              Alert.alert('Copié', 'Le texte a été copié.');
+            },
+          },
+          { text: 'Annuler', style: 'cancel' },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Options',
+        'Que souhaites-tu faire ?',
+        [
+          {
+            text: 'Masquer cette publication',
+            onPress: () => {
+              setPosts((prev) => prev.filter((p) => p.id !== post.id));
+              Alert.alert('Masqué', 'Cette publication a été masquée.');
+            },
+          },
+          {
+            text: 'Signaler la publication',
+            style: 'destructive',
+            onPress: () => Alert.alert('Merci', 'Le contenu a été signalé à l’équipe de modération.'),
+          },
+          {
+            text: 'Copier le texte',
+            onPress: () => {
+              if (post.caption) Clipboard.setStringAsync(post.caption);
+              Alert.alert('Copié', 'Le texte a été copié.');
+            },
+          },
+          { text: 'Annuler', style: 'cancel' },
+        ]
+      );
+    }
+  };
+
+  const confirmDeletePost = async (postId) => {
+    try {
+      const { error: delErr } = await supabase.from('posts').delete().eq('id', postId);
+      if (delErr) throw delErr;
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      Alert.alert('Supprimé', 'Ta publication a été supprimée.');
+    } catch (err) {
+      console.error('Erreur suppression post:', err);
+      Alert.alert('Erreur', 'Impossible de supprimer la publication.');
     }
   };
 
@@ -545,17 +676,18 @@ export default function HomeScreen({ navigation }) {
     const isSaved = savedPostIds.includes(item.id);
     const userReactionKey = userReactions[item.id];
     const userReactionObj = REACTIONS.find((r) => r.key === userReactionKey);
-    const reactionIcon = userReactionObj ? '♥' : isLiked ? '♥' : '♡';
     const isReactionActive = Boolean(userReactionObj || isLiked);
+    const reactionColor = userReactionObj ? userReactionObj.color : isLiked ? '#fe2c55' : '#ffffff';
+    const reactionIcon = <HeartIcon size={20} color={reactionColor} filled={isReactionActive} />;
     return (
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
-          <Image source={{ uri: item.authorAvatar || 'https://via.placeholder.com/150' }} style={styles.postAvatar} />
+          <Image source={{ uri: getAvatarUri(item.authorAvatar, item.authorName) }} style={styles.postAvatar} />
           <View style={styles.postHeaderInfo}>
             <Text style={styles.postAuthorName}>{item.authorName || 'Anonyme'}</Text>
             <Text style={styles.postTime}>{formatRelativeTime(item.createdAt)}</Text>
           </View>
-          <TouchableOpacity style={styles.moreButton}>
+          <TouchableOpacity style={styles.moreButton} onPress={() => handlePostOptions(item)}>
             <Text style={styles.moreButtonText}>•••</Text>
           </TouchableOpacity>
         </View>
@@ -575,11 +707,11 @@ export default function HomeScreen({ navigation }) {
                 }
               }}
             >
-              <View style={[styles.postMedia, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}> 
+              <View style={[styles.postMedia, { justifyContent: 'center', alignItems: 'center' }]}> 
                 {item.thumbnailUrl ? (
                   <Image source={{ uri: item.thumbnailUrl }} style={styles.postMedia} resizeMode="cover" />
                 ) : (
-                  <Text style={{ color: '#fff' }}>Glissez vers la gauche pour le voir en plein écran</Text>
+                  <Text style={{ color: '#8a8a9a' }}>Glissez vers la gauche pour le voir en plein écran</Text>
                 )}
               </View>
             </PanGestureHandler>
@@ -621,14 +753,14 @@ export default function HomeScreen({ navigation }) {
               accessibilityLabel="Aimer la publication"
             />
             <GlassIconButton
-              icon={<CommentGlyph color="#ffffff" />}
+              icon={<CommentIcon size={20} color="#ffffff" />}
               label={String(item.commentsCount || (commentsByPost[item.id] || []).length || 0)}
               style={styles.actionButton}
               onPress={() => openComments(item)}
               accessibilityLabel="Afficher les commentaires"
             />
             <GlassIconButton
-              icon="↗"
+              icon={<ShareIcon size={20} color="#ffffff" />}
               label="Partager"
               style={styles.actionButton}
               onPress={() => handleShare(item)}
@@ -636,7 +768,7 @@ export default function HomeScreen({ navigation }) {
             />
           </View>
           <GlassIconButton
-            icon={isSaved ? '◆' : '◇'}
+            icon={<BookmarkIcon size={20} color={isSaved ? '#a613c4' : '#ffffff'} filled={isSaved} />}
             active={isSaved}
             style={styles.saveActionButton}
             onPress={() => toggleSavePost(item)}
@@ -664,17 +796,6 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
     );
-  };
-
-  const toggleCreateMenu = () => {
-    const to = showCreateMenu ? 0 : 1;
-    setShowCreateMenu(!showCreateMenu);
-    Animated.timing(createAnim, {
-      toValue: to,
-      duration: 260,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start();
   };
 
   const startLive = async () => {
@@ -712,7 +833,7 @@ export default function HomeScreen({ navigation }) {
       toValue: 0,
       duration: 220,
       easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
 
@@ -721,7 +842,7 @@ export default function HomeScreen({ navigation }) {
       toValue: -320,
       duration: 220,
       easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start(() => setDrawerVisible(false));
   };
 
@@ -754,7 +875,7 @@ export default function HomeScreen({ navigation }) {
 
       <View style={[styles.appHeader, { paddingTop: 12 + insets.top }]}>
         <TouchableOpacity style={styles.headerMenuButton} onPress={openDrawer}>
-          <Text style={styles.menuIcon}>☰</Text>
+          <MenuIcon size={22} color="#ffffff" />
         </TouchableOpacity>
 
         <Text style={styles.logoText}>MEETLY</Text>
@@ -763,7 +884,7 @@ export default function HomeScreen({ navigation }) {
           style={styles.profileHeaderButton}
           onPress={() => navigation.navigate('ProfileScreen')}
         >
-          <Image source={{ uri: currentUserProfile?.photoURL || 'https://via.placeholder.com/150' }} style={styles.headerProfileAvatar} />
+          <Image source={{ uri: getAvatarUri(currentUserProfile?.photoURL, currentUserProfile?.displayName) }} style={styles.headerProfileAvatar} />
         </TouchableOpacity>
       </View>
 
@@ -794,6 +915,15 @@ export default function HomeScreen({ navigation }) {
             style={styles.feedList}
             refreshing={loading}
             onRefresh={() => setReloadKey((value) => value + 1)}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#8a8a9a', fontSize: 13 }}>Chargement...</Text>
+                </View>
+              ) : null
+            }
             contentContainerStyle={[styles.scrollListPadding, { paddingBottom: 92 + insets.bottom }]}
             ListHeaderComponent={
               <View style={styles.headerExtension}>
@@ -810,7 +940,7 @@ export default function HomeScreen({ navigation }) {
                       onPress={() => navigation.navigate('StudioPostScreen', { type: 'story' })}
                     >
                       <View style={styles.addStoryCircle}>
-                        <Text style={styles.addStoryPlus}>+</Text>
+                        <PlusButtonIcon size={20} variant="outline" color="#a613c4" />
                       </View>
                       <Text style={styles.storyUsername} numberOfLines={1}>Ajouter</Text>
                     </TouchableOpacity>
@@ -819,7 +949,7 @@ export default function HomeScreen({ navigation }) {
                       <TouchableOpacity key={story.id} style={styles.storyCard} onPress={() => navigation.navigate('StoryViewer', { startIndex: idx })}>
                         <View style={styles.storyImageContainer}>
                           <Image
-                            source={{ uri: story.authorAvatar || 'https://via.placeholder.com/150' }}
+                            source={{ uri: getAvatarUri(story.authorAvatar, story.authorName) }}
                             style={styles.storyAvatar}
                           />
                         </View>
@@ -833,9 +963,11 @@ export default function HomeScreen({ navigation }) {
 
                 {/* ─── BARRE DE RECHERCHE ─── */}
                 <View style={styles.searchBarContainer}>
-                  <Text style={styles.searchIcon}>🔍</Text>
+                  <View style={{ marginRight: 8 }}>
+                    <SearchIcon size={18} color="#8a8a9a" />
+                  </View>
                   <TextInput
-                    style={styles.searchInput}
+                    style={styles.searchInput} 
                     placeholder="Rechercher une personne, vidéo ou hashtag..."
                     placeholderTextColor="#8a8a9a"
                     value={searchQuery}
@@ -845,7 +977,7 @@ export default function HomeScreen({ navigation }) {
                   />
                   {searchQuery.length > 0 && (
                     <TouchableOpacity onPress={() => setSearchQuery('')}>
-                      <Text style={styles.clearSearchIcon}>✕</Text>
+                      <CloseIcon size={16} color="#8a8a9a" />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -859,7 +991,7 @@ export default function HomeScreen({ navigation }) {
               <TouchableOpacity style={styles.commentModalBackdrop} activeOpacity={1} onPress={closeCommentsModal} />
               <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.commentModalSheet}
+                style={styles.commentModalSheet} 
               >
                 <View style={styles.commentModalHandle} />
                 <View style={styles.commentModalHeader}>
@@ -923,7 +1055,7 @@ export default function HomeScreen({ navigation }) {
                     <Text style={styles.voiceButtonText}>{modalRecording ? '⏹️' : '🎙️'}</Text>
                   </TouchableOpacity>
                   <TextInput
-                    style={styles.commentModalInput}
+                    style={styles.commentModalInput} 
                     placeholder="Écrire un commentaire..."
                     placeholderTextColor="#8a8a9a"
                     value={modalCommentInput}

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 
 export default function CertificationsScreen({ navigation }) {
+  const themeStyles = useThemeStyles();
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,7 +22,7 @@ export default function CertificationsScreen({ navigation }) {
       if (error) throw error;
       Alert.alert('Demande envoyée', 'Votre demande de vérification a bien été enregistrée.');
       setReason('');
-    } catch (error) {
+    } catch {
       Alert.alert('Erreur', 'La demande n’a pas pu être envoyée.');
     } finally {
       setSubmitting(false);
@@ -28,20 +30,20 @@ export default function CertificationsScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>◁</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Badge bleu</Text>
+        <Text style={[styles.headerTitle, themeStyles.text]}>Badge bleu</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Demande de vérification</Text>
-        <Text style={styles.text}>Soumettez votre demande pour obtenir un badge de vérification sur Meetly.</Text>
-        <TextInput style={styles.input} placeholder="Pourquoi voulez-vous être vérifié ?" placeholderTextColor="#8a8a9a" value={reason} onChangeText={setReason} multiline />
+      <View style={[styles.card, themeStyles.card]}>
+        <Text style={[styles.title, themeStyles.text]}>Demande de vérification</Text>
+        <Text style={[styles.text, themeStyles.secondaryText]}>Soumettez votre demande pour obtenir un badge de vérification sur Meetly.</Text>
+        <TextInput style={[styles.input, themeStyles.input]} placeholder="Pourquoi voulez-vous être vérifié ?" placeholderTextColor={themeStyles.theme.textSecondary} value={reason} onChangeText={setReason} multiline />
         <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={submitting}>
           <Text style={styles.buttonText}>{submitting ? 'Envoi...' : 'Envoyer la demande'}</Text>
         </TouchableOpacity>

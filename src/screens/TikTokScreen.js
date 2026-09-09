@@ -6,6 +6,7 @@ import {
     FlatList,
     Image,
     PanResponder,
+    Platform,
     Share,
     StatusBar,
     StyleSheet,
@@ -18,6 +19,7 @@ import CommentGlyph from '../components/CommentGlyph';
 import Video from 'react-native-video'; // Composant vidéo natif ultra performant
 import SkeletonLoader from '../components/SkeletonLoader';
 import CommentsModal from '../components/CommentsModal';
+import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
@@ -35,7 +37,7 @@ export default function TikTokScreen({ navigation, route }) {
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
       onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx > 100) navigation.replace('HomeScreen');
+        if (gesture.dx > 100) navigation.goBack();
       },
     })
   ).current;
@@ -142,13 +144,13 @@ export default function TikTokScreen({ navigation, route }) {
         toValue: 1.4,
         friction: 3,
         tension: 40,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(opacity, {
         toValue: 0,
         duration: 800,
         delay: 250,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start(() => {
       setHeartBurst((prev) => (prev?.id === id ? null : prev));
@@ -240,10 +242,10 @@ export default function TikTokScreen({ navigation, route }) {
         {/* Cœur géant animé lors du Double-Tap */}
         {heartBurst && (
           <Animated.View
-            pointerEvents="none"
             style={[
               styles.floatingHeartContainer,
               {
+                pointerEvents: 'none',
                 transform: [{ scale: heartBurst.scale }],
                 opacity: heartBurst.opacity,
               },
@@ -271,7 +273,7 @@ export default function TikTokScreen({ navigation, route }) {
           {/* Avatar avec bouton Follow */}
           <View style={styles.avatarWrapper}>
             <Image
-              source={{ uri: item.author_avatar || 'https://via.placeholder.com/150' }}
+              source={{ uri: getAvatarUri(item.author_avatar, item.authorName) }}
               style={styles.authorAvatar}
             />
             {!isAuthor && !isFollowing && (

@@ -2,9 +2,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
-    Alert,
     ActivityIndicator,
-    Dimensions,
+    Alert,
     FlatList,
     Image,
     ImageBackground,
@@ -14,21 +13,24 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import SkeletonLoader from '../components/SkeletonLoader';
 import CommentGlyph from '../components/CommentGlyph';
 import GlassIconBadge from '../components/GlassIconBadge';
+import SkeletonLoader from '../components/SkeletonLoader';
+import { getAvatarUri } from '../constants/assets';
+import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
-const { width } = Dimensions.get('window');
-const COLUMN_WIDTH = width / 3 - 2;
-
 export default function ProfileScreen() {
+  const themeStyles = useThemeStyles();
   const navigation = useNavigation();
   const route = useRoute();
+  const { width } = useWindowDimensions();
+  const COLUMN_WIDTH = Math.max(80, Math.floor(Math.min(width, 768) / 3) - 2);
   const [sessionUser, setSessionUser] = useState(null);
   const userId = route.params?.userId || sessionUser?.id;
   const isOwnProfile = userId === sessionUser?.id;
@@ -201,7 +203,7 @@ export default function ProfileScreen() {
   };
 
   const renderGridItem = ({ item }) => (
-    <TouchableOpacity style={styles.gridItem}>
+    <TouchableOpacity style={[styles.gridItem, { width: COLUMN_WIDTH, height: COLUMN_WIDTH }]}>
       {item.type === 'image' && item.mediaUrl ? (
         <Image source={{ uri: item.mediaUrl }} style={styles.gridImage} />
       ) : (
@@ -214,8 +216,8 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
+      <SafeAreaView style={[styles.container, themeStyles.screen]}>
+        <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
         <View style={styles.profileSkeletonContainer}>
           <SkeletonLoader style={styles.skeletonCover} />
           <View style={styles.profileSkeletonHeader}>
@@ -237,7 +239,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.profileSkeletonGrid}>
             {[...Array(6)].map((_, index) => (
-              <SkeletonLoader key={index} style={styles.skeletonGridItem} />
+              <SkeletonLoader key={index} style={[styles.skeletonGridItem, { width: COLUMN_WIDTH, height: COLUMN_WIDTH }]} />
             ))}
           </View>
         </View>
@@ -246,15 +248,15 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0c" />
+    <SafeAreaView style={[styles.container, themeStyles.screen]}>
+      <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
       
       {/* Header fluide */}
-      <View style={styles.header}>
+      <View style={[styles.header, themeStyles.header]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backIcon}>◀️</Text>
+          <Text style={[styles.backIcon, themeStyles.text]}>◀</Text>
         </TouchableOpacity>
-        <Text style={styles.headerUsername}>@{userData?.username || 'username'}</Text>
+        <Text style={[styles.headerUsername, themeStyles.text]}>@{userData?.username || 'username'}</Text>
         {isOwnProfile ? (
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <GlassIconBadge icon="↪" size={30} />
@@ -290,7 +292,7 @@ export default function ProfileScreen() {
               {/* 2. Avatar ⭕️ superposé chevauchant la ligne du bas */}
               <View style={styles.avatarContainer}>
                 <TouchableOpacity activeOpacity={0.9} onPress={() => setAvatarViewerVisible(true)}>
-                  <Image source={{ uri: userData?.photoURL || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+                  <Image source={{ uri: getAvatarUri(userData?.photoURL, userData?.displayName) }} style={styles.avatar} />
                   {uploading && <View style={styles.avatarLoader}><ActivityIndicator size="small" color="#fff" /></View>}
                 </TouchableOpacity>
                 {isOwnProfile && !uploading && (
@@ -304,19 +306,19 @@ export default function ProfileScreen() {
             {/* 3. Informations & Biographie */}
             <View style={styles.bioContainer}>
               <View style={styles.nameRow}>
-                <Text style={styles.displayName}>{userData?.displayName || 'Nom d\'usage'}</Text>
+                <Text style={[styles.displayName, themeStyles.text]}>{userData?.displayName || 'Nom d\'usage'}</Text>
                 {userData?.isVerified && <Text style={styles.verifiedBadge}>⚡</Text>}
               </View>
-              {userData?.region && <Text style={styles.regionText}>📍 {userData.region}</Text>}
-              <Text style={styles.bioText}>{userData?.bio || "Aucune biographie pour le moment."}</Text>
+              {userData?.region && <Text style={[styles.regionText, themeStyles.secondaryText]}>📍 {userData.region}</Text>}
+              <Text style={[styles.bioText, themeStyles.secondaryText]}>{userData?.bio || "Aucune biographie pour le moment."}</Text>
             </View>
 
             {/* 4. Compteurs alignés : Post • Abonner • Abonnement • Likes */}
             <View style={styles.statsContainer}>
-              <View style={styles.statBox}><Text style={styles.statNumber}>{userPosts.length}</Text><Text style={styles.statLabel}>Post</Text></View>
-              <View style={styles.statBox}><Text style={styles.statNumber}>{userData?.followersCount || 0}</Text><Text style={styles.statLabel}>Abonner</Text></View>
-              <View style={styles.statBox}><Text style={styles.statNumber}>{userData?.followingCount || 0}</Text><Text style={styles.statLabel}>Abonnement</Text></View>
-              <View style={styles.statBox}><Text style={styles.statNumber}>{userData?.likesCount || 0}</Text><Text style={styles.statLabel}>Likes</Text></View>
+              <View style={styles.statBox}><Text style={[styles.statNumber, themeStyles.text]}>{userPosts.length}</Text><Text style={[styles.statLabel, themeStyles.mutedText]}>Post</Text></View>
+              <View style={styles.statBox}><Text style={[styles.statNumber, themeStyles.text]}>{userData?.followersCount || 0}</Text><Text style={[styles.statLabel, themeStyles.mutedText]}>Abonner</Text></View>
+              <View style={styles.statBox}><Text style={[styles.statNumber, themeStyles.text]}>{userData?.followingCount || 0}</Text><Text style={[styles.statLabel, themeStyles.mutedText]}>Abonnement</Text></View>
+              <View style={styles.statBox}><Text style={[styles.statNumber, themeStyles.text]}>{userData?.likesCount || 0}</Text><Text style={[styles.statLabel, themeStyles.mutedText]}>Likes</Text></View>
             </View>
 
             {/* Boutons d'action rapides */}
@@ -341,7 +343,7 @@ export default function ProfileScreen() {
                   <TouchableOpacity style={styles.modalCloseButton} onPress={() => setAvatarViewerVisible(false)}>
                     <Text style={styles.modalCloseText}>✕</Text>
                   </TouchableOpacity>
-                  <Image source={{ uri: userData?.photoURL || 'https://via.placeholder.com/150' }} style={styles.avatarPreview} />
+                  <Image source={{ uri: getAvatarUri(userData?.photoURL, userData?.displayName) }} style={styles.avatarPreview} />
                 </View>
               </View>
             </Modal>
@@ -350,11 +352,11 @@ export default function ProfileScreen() {
               <View style={styles.modalOverlay}>
                 <TouchableOpacity style={styles.modalBackground} onPress={() => setBioModalVisible(false)} />
                 <View style={styles.bioModalContent}>
-                  <Text style={styles.modalTitle}>Ajouter une description</Text>
+                  <Text style={[styles.modalTitle, themeStyles.text]}>Ajouter une description</Text>
                   <TextInput
-                    style={styles.bioInput}
+                    style={[styles.bioInput, themeStyles.input]}
                     placeholder="Décris-toi en quelques mots..."
-                    placeholderTextColor="#8a8a9a"
+                    placeholderTextColor={themeStyles.theme.textSecondary}
                     value={bioDraft}
                     onChangeText={setBioDraft}
                     multiline
@@ -456,7 +458,7 @@ const styles = StyleSheet.create({
   tabIcon: { fontSize: 18, opacity: 0.4 },
   activeTabIcon: { opacity: 1 },
 
-  gridItem: { width: COLUMN_WIDTH, height: COLUMN_WIDTH, margin: 1, backgroundColor: '#141418' },
+  gridItem: { margin: 1, backgroundColor: '#141418' },
   gridImage: { width: '100%', height: '100%' },
   gridTextCard: { flex: 1, padding: 8, justifyContent: 'center', alignItems: 'center' },
   gridTextCardContent: { color: '#8a8a9a', fontSize: 11, textAlign: 'center' },
@@ -472,5 +474,5 @@ const styles = StyleSheet.create({
   profileSkeletonTabs: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
   skeletonTab: { flex: 1, height: 36, borderRadius: 18, backgroundColor: '#141418', marginRight: 10 },
   profileSkeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  skeletonGridItem: { width: COLUMN_WIDTH, height: COLUMN_WIDTH, borderRadius: 16, marginBottom: 6, backgroundColor: '#141418' },
+  skeletonGridItem: { borderRadius: 16, marginBottom: 6, backgroundColor: '#141418' },
 });

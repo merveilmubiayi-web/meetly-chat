@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import BottomTabBar from '../components/BottomTabBar';
 import { useAuth } from '../contexts/AuthContext';
+import { useThemeMode } from '../contexts/ThemeContext';
 
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
@@ -35,14 +36,15 @@ const Stack = createStackNavigator();
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
+  const { theme } = useThemeMode();
 
   const navigationRef = createNavigationContainerRef();
   const [currentRoute, setCurrentRoute] = useState('HomeScreen');
 
   if (loading) {
     return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#ffffff" />
+      <View style={[styles.loaderContainer, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.icon} />
       </View>
     );
   }
@@ -59,8 +61,8 @@ export default function AppNavigator() {
         setCurrentRoute(r?.name ?? 'HomeScreen');
       }}
     >
-      <View style={styles.appShell}>
-        <View style={styles.navigatorContainer}>
+      <View style={[styles.appShell, { backgroundColor: theme.background }]}>
+        <View style={[styles.navigatorContainer, { backgroundColor: theme.background }]}>
           {user ? (
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               <Stack.Screen name="HomeScreen" component={HomeScreen} />

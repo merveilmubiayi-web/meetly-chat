@@ -10,6 +10,19 @@ export { default as MessagesIcon, default as MessageBubbleIcon } from './Message
 export { default as ProfileIcon, default as PersonIcon } from './ProfileIcon';
 export { default as Badge, BadgeWrapper } from './Badge';
 
+// Messaging & Media icons
+export { default as SendIcon } from './SendIcon';
+export { default as PlayIcon } from './PlayIcon';
+export { default as PauseIcon } from './PauseIcon';
+export { default as DoubleCheckIcon, CheckIcon } from './DoubleCheckIcon';
+export { default as ClockIcon } from './ClockIcon';
+export { default as AlertCircleIcon } from './AlertCircleIcon';
+export { default as PaperclipIcon } from './PaperclipIcon';
+export { default as DocumentIcon } from './DocumentIcon';
+export { default as PollIcon } from './PollIcon';
+export { default as LocationIcon } from './LocationIcon';
+export { default as ZapIcon } from './ZapIcon';
+
 // Additional icons
 export { default as BellIcon, default as NotificationIcon } from './BellIcon';
 export { default as SettingsIcon } from './SettingsIcon';
@@ -30,3 +43,8 @@ export { default as TrashIcon } from './TrashIcon';
 export { default as LogoutIcon } from './LogoutIcon';
 export { default as SparklesIcon } from './SparklesIcon';
 export { default as EyeIcon } from './EyeIcon';
+export { default as GridIcon } from './GridIcon';
+export { default as PinIcon } from './PinIcon';
+export { default as EditIcon } from './EditIcon';
+export { default as UserPlusIcon } from './UserPlusIcon';
+export { default as UserCheckIcon } from './UserCheckIcon';

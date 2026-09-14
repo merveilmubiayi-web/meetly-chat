@@ -511,6 +511,11 @@ export default function HomeScreen({ navigation }) {
       } else {
         await supabase.from('post_likes').upsert({ post_id: post.id, user_id: currentUserId, reaction: reactionKey });
       }
+      // Persistance du compteur dans la table posts (utilisé par ProfileScreen)
+      await supabase
+        .from('posts')
+        .update({ likes_count: newLikesCount, liked_by: newLikedBy })
+        .eq('id', post.id);
     } catch (err) {
       console.warn('Erreur reaction:', err);
     }

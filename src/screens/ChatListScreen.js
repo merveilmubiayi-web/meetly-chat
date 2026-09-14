@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
+import { BackIcon } from '../components/icons';
 import { getAvatarUri } from '../constants/assets';
 import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
@@ -130,9 +131,8 @@ export default function ChatListScreen({ navigation }) {
       <StatusBar barStyle={themeStyles.statusBar} backgroundColor={themeStyles.theme.background} />
       
       <View style={[styles.header, themeStyles.header]}>
-        {/* 💡 Remplacement par router.back() */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={[styles.backIcon, themeStyles.text]}>◁</Text>
+          <BackIcon size={20} color="#ffffff" />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, themeStyles.text]}>Discussions</Text>
         <View style={{ width: 24 }} />

@@ -1,10 +1,12 @@
 import { Asset } from 'expo-asset';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Animated,
     Dimensions,
     FlatList,
     Image,
+    Keyboard,
     PanResponder,
     Platform,
     Share,
@@ -15,14 +17,15 @@ import {
     View
 } from 'react-native';
 import GlassIconButton from '../components/GlassIconButton';
-import CommentGlyph from '../components/CommentGlyph';
 import Video from 'react-native-video'; // Composant vidéo natif ultra performant
 import SkeletonLoader from '../components/SkeletonLoader';
 import CommentsModal from '../components/CommentsModal';
 import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
+import { CommentIcon, HeartIcon, HomeIcon, ShareIcon } from '../components/icons';
 
 const { width, height } = Dimensions.get('window');
+const getNowTimestamp = () => Date.now();
 
 export default function TikTokScreen({ navigation, route }) {
   const startVideoId = route.params?.startVideoId || null;
@@ -30,77 +33,97 @@ export default function TikTokScreen({ navigation, route }) {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTrackIndex, setActiveTrackIndex] = useState(0);
-  const [preloadUri, setPreloadUri] = useState(null);
   const [commentsPost, setCommentsPost] = useState(null);
   const flatListRef = useRef(null);
-  const swipeResponder = useRef(
-    PanResponder.create({
+  const activeTrackIndexRef = useRef(0);
+  const swipeResponder = useMemo(
+    () => PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dx > 100) navigation.goBack();
       },
-    })
-  ).current;
+    }),
+    [navigation]
+  );
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id || null));
   }, []);
   
   // Référence pour observer quelle vidéo est actuellement visible au centre de l'écran
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 80 // La vidéo doit être visible à 80% pour se lancer
-  }).current;
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 70,
+    minimumViewTime: 80,
+    waitForInteraction: false,
+  };
 
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    if (viewableItems.length > 0) {
-      setActiveTrackIndex(viewableItems[0].index);
+  const updateActiveTrackIndex = useCallback((index) => {
+    if (index === null || index === undefined || index < 0 || index >= videos.length) return;
+    if (activeTrackIndexRef.current === index) return;
+
+    activeTrackIndexRef.current = index;
+    setActiveTrackIndex(index);
+  }, [videos.length]);
+
+  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    if (!viewableItems?.length) return;
+
+    const nextVisibleItem = viewableItems.find((item) => item.isViewable && item.index !== null);
+    if (nextVisibleItem?.index !== undefined && nextVisibleItem.index !== null) {
+      updateActiveTrackIndex(nextVisibleItem.index);
     }
-  }).current;
+  }, [updateActiveTrackIndex]);
+
+  const loadVideos = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('posts').select('*').eq('type', 'video').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase videos failed:', error.message);
+      setLoading(false);
+      return;
+    }
+    const videoList = (data || []).map((item) => ({
+      ...item,
+      mediaUrl: item.media_url,
+      authorName: item.author_name || 'Meetly user',
+      likesCount: item.likes_count || 0,
+      likedBy: Array.isArray(item.liked_by) ? item.liked_by : [],
+    }));
+    setVideos(videoList);
+    setLoading(false);
+
+    if (startVideoId && videoList.length > 0) {
+      const idx = videoList.findIndex((v) => v.id === startVideoId);
+      if (idx >= 0 && flatListRef.current) {
+        setTimeout(() => {
+          flatListRef.current.scrollToIndex({ index: idx, animated: true });
+          updateActiveTrackIndex(idx);
+        }, 250);
+      }
+    }
+  }, [startVideoId, updateActiveTrackIndex]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadVideos();
+    }, [loadVideos])
+  );
 
   useEffect(() => {
     let active = true;
-    const loadVideos = async () => {
-      const { data, error } = await supabase.from('posts').select('*').eq('type', 'video').order('created_at', { ascending: false });
-      if (!active) return;
-      if (error) {
-        console.warn('Supabase videos failed:', error.message);
-        setLoading(false);
-        return;
+    const channel = supabase.channel('video-feed').on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+      if (active) {
+        loadVideos();
       }
-      const videoList = (data || []).map((item) => ({
-        ...item,
-        mediaUrl: item.media_url,
-        authorName: item.author_name || 'Meetly user',
-        likesCount: item.likes_count || 0,
-        likedBy: Array.isArray(item.liked_by) ? item.liked_by : [],
-      }));
-      setVideos(videoList);
-      setLoading(false);
-
-      if (startVideoId && videoList.length > 0) {
-        const idx = videoList.findIndex((v) => v.id === startVideoId);
-        if (idx >= 0 && flatListRef.current) {
-          setTimeout(() => {
-            flatListRef.current.scrollToIndex({ index: idx, animated: true });
-            setActiveTrackIndex(idx);
-          }, 250);
-        }
-      }
-    };
-    loadVideos();
-    const channel = supabase.channel('video-feed').on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadVideos).subscribe();
+    }).subscribe();
 
     return () => {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [startVideoId]);
+  }, [loadVideos]);
 
-  useEffect(() => {
-    const nextIndex = activeTrackIndex + 1;
-    const nextVideo = videos[nextIndex];
-    setPreloadUri(nextVideo?.mediaUrl || null);
-  }, [activeTrackIndex, videos]);
+  const preloadUri = videos[activeTrackIndex + 1]?.mediaUrl || null;
 
   useEffect(() => {
     if (!preloadUri) return;
@@ -158,7 +181,7 @@ export default function TikTokScreen({ navigation, route }) {
   };
 
   const handleDoubleTap = (item) => {
-    const now = Date.now();
+    const now = getNowTimestamp();
     const DOUBLE_TAP_DELAY = 300;
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
       // Double tap detected
@@ -288,7 +311,7 @@ export default function TikTokScreen({ navigation, route }) {
 
           {/* Like */}
           <GlassIconButton
-            icon={isLiked ? '♥' : '♡'}
+            icon={<HeartIcon size={22} color={isLiked ? '#ffffff' : '#c6c6ce'} />}
             label={String(item.likesCount || 0)}
             active={isLiked}
             style={styles.actionButton}
@@ -297,7 +320,7 @@ export default function TikTokScreen({ navigation, route }) {
           />
 
           <GlassIconButton
-            icon={<CommentGlyph color="#ffffff" />}
+            icon={<CommentIcon size={22} color="#ffffff" />}
             label={String(item.comments_count || 0)}
             style={styles.actionButton}
             onPress={() => setCommentsPost(item)}
@@ -306,7 +329,7 @@ export default function TikTokScreen({ navigation, route }) {
           
           {/* Partager */}
           <GlassIconButton
-            icon='↗'
+            icon={<ShareIcon size={22} color="#ffffff" />}
             label="Partager"
             style={styles.actionButton}
             onPress={() => handleShare(item)}
@@ -320,7 +343,11 @@ export default function TikTokScreen({ navigation, route }) {
   return (
     <View style={styles.container} {...swipeResponder.panHandlers}>
       <View style={styles.homeButton}>
-        <GlassIconButton icon="⌂" onPress={() => navigation.replace('HomeScreen')} accessibilityLabel="Retourner à l'accueil" />
+        <GlassIconButton
+          icon={<HomeIcon size={22} color="#ffffff" />}
+          onPress={() => navigation.replace('HomeScreen')}
+          accessibilityLabel="Retourner à l'accueil"
+        />
       </View>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       
@@ -337,9 +364,14 @@ export default function TikTokScreen({ navigation, route }) {
           ref={flatListRef}
           pagingEnabled
           showsVerticalScrollIndicator={false}
+          bounces={false}
+          decelerationRate="fast"
           snapToInterval={height}
           snapToAlignment="start"
-          decelerationRate="fast"
+          refreshing={loading}
+          onRefresh={loadVideos}
+          onScrollBeginDrag={() => Keyboard.dismiss()}
+          onMomentumScrollBegin={() => Keyboard.dismiss()}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           getItemLayout={(_, index) => ({ length: height, offset: height * index, index })}

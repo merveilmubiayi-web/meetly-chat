@@ -64,7 +64,7 @@ export default function AppNavigator() {
       <View style={[styles.appShell, { backgroundColor: theme.background }]}>
         <View style={[styles.navigatorContainer, { backgroundColor: theme.background }]}>
           {user ? (
-            <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: true, gestureDirection: 'horizontal' }}>
               <Stack.Screen name="HomeScreen" component={HomeScreen} />
               <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
               <Stack.Screen name="AccountSettingsScreen" component={AccountSettingsScreen} />
@@ -89,7 +89,7 @@ export default function AppNavigator() {
               <Stack.Screen name="Certifications" component={CertificationsScreen} />
             </Stack.Navigator>
           ) : (
-            <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: true, gestureDirection: 'horizontal' }}>
               <Stack.Screen name="RecentAccounts" component={RecentAccountsScreen} />
               <Stack.Screen name="LoginScreen" component={LoginScreen} />
               <Stack.Screen name="Register" component={RegisterScreen} />

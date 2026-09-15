@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
-import { Video } from 'expo-av';
+import { Video } from 'expo-video';
 
 import SkeletonLoader from '../components/SkeletonLoader';
 import VoiceNotePlayer from '../components/VoiceNotePlayer';

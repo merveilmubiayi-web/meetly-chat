@@ -1,4 +1,4 @@
-import { Video } from 'expo-av';
+import { Video } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Image, PanResponder, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';

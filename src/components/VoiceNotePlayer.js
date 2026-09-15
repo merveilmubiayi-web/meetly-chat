@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 import { PlayIcon, PauseIcon, MicIcon } from './icons';
 
 // Generate consistent fake or metering-based waveform bars for each audio

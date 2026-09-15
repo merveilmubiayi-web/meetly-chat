@@ -466,7 +466,13 @@ export default function HomeScreen({ navigation }) {
     };
 
     fetchFeed();
-    const channel = supabase.channel(`feed-${reloadKey}`).on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, fetchFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchFeed).on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, fetchFeed).subscribe();
+
+    const channel = supabase.channel('feed');
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchFeed);
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, fetchFeed);
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchFeed);
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, fetchFeed);
+    channel.subscribe();
 
     return () => {
       active = false;

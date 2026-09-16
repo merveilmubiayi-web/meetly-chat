@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import SkeletonLoader from '../components/SkeletonLoader';
 import { getAvatarUri } from '../constants/assets';
 import { useThemeStyles } from '../constants/themeStyles';
+import { appCache, CACHE_KEYS, CACHE_TTL } from '../utils/cache';
 import { supabase } from '../lib/supabase';
 
 // ──────────────────────────────────────────────────────────────
@@ -140,6 +141,13 @@ export default function NotificationScreen() {
       const user = userData?.user;
       if (!user) { setLoading(false); return; }
       setCurrentUserId(user.id);
+      const cacheKey = CACHE_KEYS.notifications(user.id);
+      const cachedItems = appCache.get(cacheKey);
+      if (cachedItems) {
+        setItems(cachedItems);
+        setLoading(false);
+        return;
+      }
 
       const { data, error } = await supabase
         .from('notifications')
@@ -162,8 +170,10 @@ export default function NotificationScreen() {
           .order('created_at', { ascending: false })
           .limit(60);
         setItems(fallback || []);
+        appCache.set(cacheKey, fallback || [], CACHE_TTL.notifications);
       } else {
         setItems(data || []);
+        appCache.set(cacheKey, data || [], CACHE_TTL.notifications);
       }
       setLoading(false);
     };
@@ -193,7 +203,11 @@ export default function NotificationScreen() {
               .maybeSingle();
             sender = data;
           }
-          setItems((prev) => [{ ...payload.new, sender }, ...prev]);
+          setItems((prev) => {
+            const nextItems = [{ ...payload.new, sender }, ...prev];
+            appCache.set(CACHE_KEYS.notifications(u.user.id), nextItems, CACHE_TTL.notifications);
+            return nextItems;
+          });
         })
         .on('postgres_changes', {
           event: 'DELETE',
@@ -202,7 +216,11 @@ export default function NotificationScreen() {
           filter: `recipient_id=eq.${u.user.id}`,
         }, (payload) => {
           if (!active) return;
-          setItems((prev) => prev.filter((n) => n.id !== payload.old.id));
+          setItems((prev) => {
+            const nextItems = prev.filter((n) => n.id !== payload.old.id);
+            appCache.set(CACHE_KEYS.notifications(u.user.id), nextItems, CACHE_TTL.notifications);
+            return nextItems;
+          });
         })
         .subscribe();
     });
@@ -218,6 +236,7 @@ export default function NotificationScreen() {
     if (!item.read_at) {
       const now = new Date().toISOString();
       setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, read_at: now } : n)));
+      appCache.invalidate(CACHE_KEYS.notifications(currentUserId));
       await supabase
         .from('notifications')
         .update({ read_at: now })
@@ -229,6 +248,7 @@ export default function NotificationScreen() {
     if (!currentUserId) return;
     const now = new Date().toISOString();
     setItems((prev) => prev.map((n) => ({ ...n, read_at: now })));
+    appCache.invalidate(CACHE_KEYS.notifications(currentUserId));
     await supabase
       .from('notifications')
       .update({ read_at: now })
@@ -244,6 +264,7 @@ export default function NotificationScreen() {
         style: 'destructive',
         onPress: async () => {
           setItems((prev) => prev.filter((n) => n.id !== item.id));
+          appCache.invalidate(CACHE_KEYS.notifications(currentUserId));
           await supabase.from('notifications').delete().eq('id', item.id);
         },
       },
@@ -267,7 +288,7 @@ export default function NotificationScreen() {
         break;
       case 'message':
         if (item.conversation_id) {
-          navigation.navigate('ChatScreen', { chatId: item.conversation_id });
+          navigation.navigate('ChatRoom', { chatId: item.conversation_id });
         } else {
           navigation.navigate('ChatListScreen');
         }

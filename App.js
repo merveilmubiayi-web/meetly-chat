@@ -3,6 +3,7 @@ import { Button, Platform, LogBox, StyleSheet, Text, View } from 'react-native';
 import 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { AppProvider } from './src/contexts/AppContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -59,7 +60,9 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <AppNavigator />
+            <AppProvider>
+              <AppNavigator />
+            </AppProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

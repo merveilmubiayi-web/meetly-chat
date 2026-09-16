@@ -7,6 +7,7 @@ export default function GlassIconButton({
   onPress,
   onLongPress,
   accessibilityLabel,
+  badgeCount = 0,
   style,
 }) {
   const palette = {
@@ -36,6 +37,7 @@ export default function GlassIconButton({
     >
       <View style={styles.content}>
         {typeof icon === 'string' ? <Text style={[styles.icon, { color: active ? palette.iconActive : palette.icon }]}>{icon}</Text> : icon}
+        {badgeCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text></View>}
         {!!label && <Text style={[styles.label, { color: active ? palette.labelActive : palette.label }]}>{label}</Text>}
       </View>
     </TouchableOpacity>
@@ -65,4 +67,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 1,
   },
+  badge: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: 8,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: '#ffffff', fontSize: 9, fontWeight: '800' },
 });

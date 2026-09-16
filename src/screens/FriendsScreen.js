@@ -1,21 +1,30 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Alert,
+  Alert,
   ActivityIndicator,
-    FlatList,
-    Image,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  FlatList,
+  Image,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 import { useSafeBottomPadding } from '../utils/safeAreaHelpers';
+import { usePresence } from '../utils/presenceManager';
+import {
+  BackIcon,
+  SearchIcon,
+  UserPlusIcon,
+  UserCheckIcon,
+  MessagesIcon,
+  VerifiedIcon,
+} from '../components/icons';
 
 const PAGE_SIZE = 10;
 
@@ -216,7 +225,7 @@ export default function FriendsScreen({ navigation }) {
 
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backIcon}>◁</Text>
+          <BackIcon size={20} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Amis</Text>
         <View style={{ width: 24 }} />

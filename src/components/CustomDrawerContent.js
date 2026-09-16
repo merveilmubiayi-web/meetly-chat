@@ -54,7 +54,7 @@ export default function CustomDrawerContent({ navigation }) {
       await supabase.auth.signOut();
       navigation.replace('LoginScreen');
     } catch (error) {
-      console.log("Erreur déconnexion:", error);
+      __DEV__ && console.warn('Erreur déconnexion:', error);
     }
   };
 

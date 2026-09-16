@@ -23,6 +23,7 @@ export default function BottomTabBar({ navigation, activeTab, onPlusPress, unrea
         label={label}
         active={isActive}
         onPress={onPress}
+        badgeCount={badgeCount}
       />
     );
   };

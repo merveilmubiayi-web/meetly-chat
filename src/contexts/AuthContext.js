@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { presenceManager } from '../utils/presenceManager';
 
 const AuthContext = createContext(null);
 const RECENT_ACCOUNTS_KEY = '@meetly/recent-accounts';
@@ -20,6 +21,7 @@ async function rememberAccount(user) {
     await AsyncStorage.setItem(RECENT_ACCOUNTS_KEY, JSON.stringify(nextAccounts));
   } catch (error) {
     console.warn('Recent accounts could not be saved:', error.message);
+    __DEV__ && console.warn('Recent accounts could not be saved:', error.message);
   }
 }
 
@@ -32,7 +34,11 @@ async function ensureProfile(user) {
     phone_number: user.user_metadata?.phoneNumber || null,
     avatar_url: user.user_metadata?.avatar_url || null,
   };
-  const { data, error } = await supabase.from('profiles').upsert(profile, { onConflict: 'id', ignoreDuplicates: true }).select().maybeSingle();
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(profile, { onConflict: 'id', ignoreDuplicates: true })
+    .select()
+    .maybeSingle();
   if (error) throw error;
   return data || profile;
 }
@@ -49,11 +55,21 @@ export function AuthProvider({ children }) {
       if (!mounted) return;
       setSession(nextSession || null);
       setUser(nextSession?.user || null);
-      if (nextSession?.user) rememberAccount(nextSession.user);
+
+      if (nextSession?.user) {
+        rememberAccount(nextSession.user);
+        // ✅ Initialiser la présence globale dès le login (un seul canal Realtime pour toute l'app)
+        presenceManager.initialize(nextSession.user.id).catch(() => {});
+      } else {
+        // 🔴 Nettoyer la présence au logout
+        presenceManager.destroy().catch(() => {});
+      }
+
       try {
         setProfile(nextSession?.user ? await ensureProfile(nextSession.user) : null);
       } catch (error) {
         console.warn('Profile initialization failed:', error.message);
+        __DEV__ && console.warn('Profile initialization failed:', error.message);
         setProfile(null);
       } finally {
         if (mounted) setLoading(false);
@@ -61,27 +77,32 @@ export function AuthProvider({ children }) {
     };
 
     supabase.auth.getSession().then(({ data }) => applySession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => applySession(nextSession));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) =>
+      applySession(nextSession)
+    );
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
     };
   }, []);
 
-  const value = useMemo(() => ({
-    session,
-    user,
-    profile,
-    loading,
-    isAuthenticated: Boolean(user),
-    signOut: () => supabase.auth.signOut(),
-    refreshProfile: async () => {
-      if (!user) return null;
-      const nextProfile = await ensureProfile(user);
-      setProfile(nextProfile);
-      return nextProfile;
-    },
-  }), [session, user, profile, loading]);
+  const value = useMemo(
+    () => ({
+      session,
+      user,
+      profile,
+      loading,
+      isAuthenticated: Boolean(user),
+      signOut: () => supabase.auth.signOut(),
+      refreshProfile: async () => {
+        if (!user) return null;
+        const nextProfile = await ensureProfile(user);
+        setProfile(nextProfile);
+        return nextProfile;
+      },
+    }),
+    [session, user, profile, loading]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

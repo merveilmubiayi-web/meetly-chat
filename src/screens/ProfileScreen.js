@@ -21,6 +21,7 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import { getAvatarUri } from '../constants/assets';
 import { useThemeStyles } from '../constants/themeStyles';
 import { supabase } from '../lib/supabase';
+import { appCache, CACHE_KEYS, CACHE_TTL } from '../utils/cache';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 import {
   BackIcon,
@@ -74,14 +75,22 @@ export default function ProfileScreen() {
   const loadProfile = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+    const profileCacheKey = CACHE_KEYS.profile(userId);
+    const postsCacheKey = CACHE_KEYS.posts(userId);
+    const cachedProfile = appCache.get(profileCacheKey);
+    const cachedPosts = appCache.get(postsCacheKey);
     const [profileResult, postsResult, followersResult, followingResult] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-      supabase
-        .from('posts')
-        .select('id, type, caption, media_url, liked_by, is_pinned, created_at, likes_count')
-        .eq('author_id', userId)
-        .in('type', ['text', 'image'])
-        .order('created_at', { ascending: false }),
+      cachedProfile
+        ? Promise.resolve({ data: cachedProfile, error: null })
+        : supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+      cachedPosts
+        ? Promise.resolve({ data: cachedPosts, error: null })
+        : supabase
+          .from('posts')
+          .select('id, type, caption, media_url, liked_by, is_pinned, created_at, likes_count')
+          .eq('author_id', userId)
+          .in('type', ['text', 'image'])
+          .order('created_at', { ascending: false }),
       supabase.from('follows').select('id', { count: 'exact' }).eq('following_id', userId),
       supabase.from('follows').select('id', { count: 'exact' }).eq('follower_id', userId),
     ]);
@@ -93,6 +102,7 @@ export default function ProfileScreen() {
     }
 
     const profile = profileResult.data;
+    if (!cachedProfile && profile) appCache.set(profileCacheKey, profile, CACHE_TTL.profile);
     setUserData(
       profile
         ? {
@@ -114,6 +124,7 @@ export default function ProfileScreen() {
       isPinned: post.is_pinned,
       likesCount: post.likes_count || 0,
     }));
+    if (!cachedPosts) appCache.set(postsCacheKey, postsResult.data || [], CACHE_TTL.posts);
     setUserPosts(posts);
 
     // Calcul des likes total depuis les posts
@@ -514,11 +525,11 @@ export default function ProfileScreen() {
               </Text>
             </View>
 
-            {/* Stats : Post • Abonnés • Abonnements • Likes */}
+            {/* Statistiques calculées depuis les données du profil */}
             <View style={styles.statsContainer}>
               <View style={styles.statBox}>
                 <Text style={[styles.statNumber, themeStyles.text]}>{formatCount(userPosts.length)}</Text>
-                <Text style={[styles.statLabel, themeStyles.mutedText]}>Posts</Text>
+                <Text style={[styles.statLabel, themeStyles.mutedText]}>Publications</Text>
               </View>
               <View style={styles.statBox}>
                 <Text style={[styles.statNumber, themeStyles.text]}>{formatCount(followersCount)}</Text>
@@ -530,7 +541,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.statBox}>
                 <Text style={[styles.statNumber, themeStyles.text]}>{formatCount(totalLikes)}</Text>
-                <Text style={[styles.statLabel, themeStyles.mutedText]}>Likes</Text>
+                <Text style={[styles.statLabel, themeStyles.mutedText]}>J’aime</Text>
               </View>
             </View>
 

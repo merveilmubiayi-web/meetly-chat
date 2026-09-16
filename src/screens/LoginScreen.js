@@ -23,7 +23,7 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       const redirectTo = getGoogleRedirectUri();
-      console.log('[Google OAuth test]', { testMode, redirectTo });
+      __DEV__ && console.warn('[Google OAuth test]', { testMode, redirectTo });
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -42,7 +42,7 @@ export default function LoginScreen({ navigation }) {
 
       if (testMode) {
         Alert.alert('Mode test Google', `Redirect URL:\n${redirectTo}\n\nURL OAuth générée:\n${data.url}`);
-        console.log('[Google OAuth URL]', data.url);
+        __DEV__ && console.warn('[Google OAuth URL]', data.url);
         setLoading(false);
         return;
       }

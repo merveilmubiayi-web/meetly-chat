@@ -13,7 +13,7 @@ module.exports = function (api) {
           extensions: ['.js', '.jsx', '.ts', '.tsx', '.json', '.png', '.jpg', '.jpeg'],
         },
       ],
-      'react-native-reanimated/plugin',
+      'react-native-worklets/plugin',
     ],
   };
 };

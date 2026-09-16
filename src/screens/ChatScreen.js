@@ -43,6 +43,7 @@ import { requestLiveKitToken } from '../config/api';
 import { getAvatarUri } from '../constants/assets';
 import { supabase } from '../lib/supabase';
 import { createAudioRecorder } from '../utils/audioRecorder';
+import { usePresence } from '../utils/presenceManager';
 import { uploadToCloudinary } from '../utils/cloudinaryUpload';
 
 const formatMessageTime = (dateStr) => {
@@ -102,6 +103,7 @@ export default function ChatScreen({ navigation, route }) {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [selectedMessageAction, setSelectedMessageAction] = useState(null);
+  const { isOnline: recipientIsOnline } = usePresence(recipientId);
 
   const flatListRef = useRef();
   const audioRecorderRef = useRef(null);
@@ -131,7 +133,7 @@ export default function ChatScreen({ navigation, route }) {
     };
   }, [recipientId]);
 
-  // 3. Realtime presence & typing
+  // 3. Realtime typing (presence is managed globally)
   useEffect(() => {
     if (!chatId || !currentUser) return;
     const channel = supabase
@@ -145,16 +147,7 @@ export default function ChatScreen({ navigation, route }) {
           }, 3000);
         }
       })
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const onlineUsers = Object.values(state).flat().map((p) => p.userId);
-        setIsRecipientOnline(onlineUsers.includes(recipientId));
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ userId: currentUser.id, onlineAt: new Date().toISOString() });
-        }
-      });
+      .subscribe();
 
     broadcastChannelRef.current = channel;
     return () => {
@@ -162,6 +155,10 @@ export default function ChatScreen({ navigation, route }) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [chatId, currentUser, recipientId]);
+
+  useEffect(() => {
+    setIsRecipientOnline(recipientIsOnline);
+  }, [recipientIsOnline]);
 
   // 4. Détection des appels entrants
   useEffect(() => {
@@ -690,16 +687,18 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   // ─── 📞 APPELS LIVEKIT FLUIDES ET RÉSISTANTS ───
+  // ─── 📞 APPELS LIVEKIT — NIVEAU PRODUCTION ───────────────────
   const initiateCall = async (mode /* 'audio' | 'video' */) => {
-    try {
-      if (!chatId || !currentUser?.id) {
-        Alert.alert('Appel indisponible', 'La conversation n’est pas prête.');
-        return;
-      }
+    if (!chatId || !currentUser?.id) {
+      Alert.alert('Appel indisponible', 'La conversation n\'est pas prête.');
+      return;
+    }
 
+    try {
       const roomName = `meetly_chat_${chatId}`;
       const tokenResult = await requestLiveKitToken(roomName, currentUser.id);
 
+      // Créer la session d'appel avec statut 'ringing'
       const { data: callSession } = await supabase
         .from('call_sessions')
         .insert({
@@ -707,10 +706,22 @@ export default function ChatScreen({ navigation, route }) {
           room_name: roomName,
           initiated_by: currentUser.id,
           call_type: mode,
-          status: 'started',
+          status: 'ringing',
         })
         .select('id')
         .maybeSingle();
+
+      // Envoyer une notification push au destinataire
+      if (recipientId) {
+        await supabase.from('notifications').insert({
+          recipient_id: recipientId,
+          sender_id: currentUser.id,
+          type: 'call',
+          message: mode === 'video' ? 'Appel vidéo entrant' : 'Appel vocal entrant',
+          call_session_id: callSession?.id,
+          conversation_id: chatId,
+        }).catch(() => {});
+      }
 
       navigation.navigate('LiveCallScreen', {
         room: roomName,
@@ -718,18 +729,27 @@ export default function ChatScreen({ navigation, route }) {
         mode,
         token: tokenResult?.token,
         callSessionId: callSession?.id,
-        autoJoin: true,
+        autoJoin: false, // L'appelant voit "Ça sonne..." avant de rejoindre
+        recipientId,
+        recipientName: recipientProfile?.displayName || recipientProfile?.name,
+        recipientAvatar: recipientProfile?.photoURL || recipientProfile?.avatar_url,
       });
     } catch (err) {
       console.warn('Fallback call startup:', err);
+      __DEV__ && console.warn('Fallback call startup:', err);
+      // Fallback : rejoindre directement sans token
       navigation.navigate('LiveCallScreen', {
         room: `meetly_chat_${chatId}`,
         conversationId: chatId,
         mode,
-        autoJoin: true,
+        autoJoin: false,
+        recipientId,
+        recipientName: recipientProfile?.displayName || recipientProfile?.name,
+        recipientAvatar: recipientProfile?.photoURL || recipientProfile?.avatar_url,
       });
     }
   };
+
 
   // ─── RENDU DU STATUT DU MESSAGE ───
   const renderMessageStatus = (item) => {

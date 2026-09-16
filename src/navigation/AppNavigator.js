@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import BottomTabBar from '../components/BottomTabBar';
 import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import { useThemeMode } from '../contexts/ThemeContext';
 
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
@@ -33,12 +34,13 @@ import StudioPostScreen from '../screens/StudioPostScreen';
 import TikTokScreen from '../screens/TikTokScreen';
 
 const Stack = createStackNavigator();
+const navigationRef = createNavigationContainerRef();
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
+  const { unreadCounts } = useApp();
   const { theme } = useThemeMode();
 
-  const navigationRef = createNavigationContainerRef();
   const [currentRoute, setCurrentRoute] = useState('HomeScreen');
 
   if (loading) {
@@ -104,6 +106,8 @@ export default function AppNavigator() {
               replace: (name, params) => navigationRef.current?.dispatch(StackActions.replace(name, params)),
             }}
             activeTab={currentRoute}
+            unreadMessages={unreadCounts.messages}
+            unreadNotifs={unreadCounts.notifications}
             onPlusPress={() => navigationRef.current?.navigate('StudioPostScreen')}
           />
         )}
